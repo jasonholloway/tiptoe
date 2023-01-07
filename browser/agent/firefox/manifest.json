@@ -2,7 +2,7 @@
     "manifest_version": 2,
     "name": "tiptoe",
     "version": "0.1",
-    "permissions": ["tabs"],
+    "permissions": ["tabs","activeTab","nativeMessaging"],
     "content_scripts": [
         {
             "matches": ["*"],

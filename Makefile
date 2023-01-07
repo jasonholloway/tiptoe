@@ -1,0 +1,2 @@
+
+installMediator: firefox/mediator
