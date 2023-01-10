@@ -1,7 +1,7 @@
 {
-    "name": "tiptoe-mediator",
+    "name": "tiptoe_mediator",
     "description": "Routes TipToe events and commands back and forth into the browser",
-    "path": "$PWD/mediate.sh",
+    "path": "tiptoe-browser-mediate",
     "type": "stdio",
     "allowed_extensions": [ "tiptoe@woodpigeon.eu" ]
 }
