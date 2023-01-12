@@ -11,9 +11,13 @@ port.onMessage.addListener(m => {
 browser.tabs.onActivated.addListener(({tabId,previousTabId,windowId}) => {
     console.log('activated', tabId);
 
-    const m = `;* selected firefox/${windowId}/${tabId};`;
+    const m = packMsg('visited', `${windowId}/${tabId}`);
     console.log('posting', m);
 
     port.postMessage(m);
     console.log('posted', m);
 });
+
+function packMsg(t, s) {
+    return `;*${t} ${s};`;
+}

@@ -1,4 +1,4 @@
-use std::{net::{TcpListener, TcpStream, SocketAddr}, io::{BufReader, BufRead, ErrorKind}, str::*, time::Duration, collections::VecDeque, any};
+use std::{net::{TcpListener, TcpStream, SocketAddr}, io::{BufReader, BufRead, ErrorKind}, str::*, time::Duration, collections::VecDeque};
 
 
 #[derive(Debug, PartialEq)]
@@ -13,34 +13,50 @@ enum ParseMode {
     Browser
 }
 
-type PeerName = String;
+type PeerTag = String;
 type Ref = String;
 
 #[derive(Debug)]
 enum Msg {
-    Hello(PeerName, ParseMode),
-    Selected(Ref)    
+    Hello(PeerTag, ParseMode),
+    Visited(Ref)    
 }
 
 
+#[derive(Debug)]
+struct Visit {
+    tag: String,
+    reference: Ref
+}
 
-struct Peer<'b> {
+
+struct Peer {
+    input: PeerInput,
+    state: PeerState,
+}
+
+struct PeerInput {
+    reader: BufReader<TcpStream>,
+    buffer: Vec<u8>,
+}
+
+struct PeerState {
     mode: PeerMode,
     parse_mode: ParseMode,
-    name: String,
-    addr: SocketAddr,
-    reader: &'b BufReader<TcpStream>,
-    buffer: &'b Vec<u8>,
+    tag: String,
+    addr: SocketAddr
 }
+
+
 
 impl core::fmt::Debug for Peer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.addr.fmt(f)
+        self.state.addr.fmt(f)
     }
 }
 
 fn main() {
-    let mut ref_log: VecDeque<Ref> = VecDeque::new();
+    let mut visits: VecDeque<Visit> = VecDeque::new();
     
     let listener = TcpListener::bind("127.0.0.1:17878").unwrap();
     listener.set_nonblocking(true).unwrap();
@@ -55,12 +71,16 @@ fn main() {
             Ok((stream, address)) => {
                 stream.set_nonblocking(true).unwrap();
                 peers.push(Peer {
-                    mode: PeerMode::Start,
-                    parse_mode: ParseMode::Basic,
-                    name: String::new(),
-                    addr: address,
-                    reader: BufReader::new(stream),
-                    buffer: Vec::new()
+                    input: PeerInput {
+                        reader: BufReader::new(stream),
+                        buffer: Vec::new()
+                    },
+                    state: PeerState {
+                        mode: PeerMode::Start,
+                        parse_mode: ParseMode::Basic,
+                        tag: String::new(),
+                        addr: address,
+                    },
                 });
                 work_done = true;
             }
@@ -71,19 +91,19 @@ fn main() {
         };
 
         for (i, p) in peers.iter_mut().enumerate() {
-            match read_peer(p) {
+            match read_peer(&mut p.input, &p.state) {
                 Some(PeerReadResult::Line(line)) => {
-                    let parsed_msg = parse_msg(p, line);
-                    // println!("{0:?}: {1:?} {2:?} {3:?}", p.addr, p.buffer, line, &parsed_msg);
-                    // p.buffer.clear();
+                    let parsed_msg = parse_msg(&p.state, line);
+                    println!("{0:?}: {1:?} {2:?}", p.state.addr, line, parsed_msg);
 
-                    // parsed_msg.map(|m| handle_msg(&mut ref_log, *p, m));
+                    parsed_msg.map(|m| handle_msg(&mut visits, &mut p.state, m));
 
+                    p.input.buffer.clear();
                     work_done = true;
                 }
                 Some(PeerReadResult::Close) => {
                     closable_peers.push(i);
-                    println!("{0:?} END", p.addr)
+                    println!("{0:?} END", p.state.addr)
                 }
                 None => ()
             }
@@ -96,25 +116,21 @@ fn main() {
         closable_peers.clear();
 
         if !work_done {
-            std::thread::sleep(Duration::from_millis(100));
+            std::thread::sleep(Duration::from_millis(30));
         }
     };
 }
 
-enum PeerReadResult<'inp> {
-    Line(&'inp str),
-    Close
-}
-
-
-fn read_peer<'p>(peer: &'p mut Peer) -> Option<PeerReadResult<'p>> {
+fn read_peer<'i>(input: &'i mut PeerInput, peer: &PeerState) -> Option<PeerReadResult<'i>> {
     match peer.parse_mode {
         ParseMode::Basic => {
-            match peer.reader.read_until(b'\n', &mut peer.buffer) {
+            match input.reader.read_until(b'\n', &mut input.buffer) {
                 Ok(0) => Some(PeerReadResult::Close),
                 Ok(_) => {
-                    let line = from_utf8(&peer.buffer).unwrap();
-                    Some(PeerReadResult::Line(line))
+                    input.buffer
+                        .split_last()
+                        .map(|(_,l)| from_utf8(l).unwrap())
+                        .map(|s| PeerReadResult::Line(s))
                 }, 
                 Err(e) if e.kind() == ErrorKind::WouldBlock => None,
                 Err(e) => {
@@ -123,12 +139,33 @@ fn read_peer<'p>(peer: &'p mut Peer) -> Option<PeerReadResult<'p>> {
                 }
             }
         }
-        _ => None
-        // ParseMode::Browser => peer.reader.read_until(b';', &mut peer.buffer),
+        ParseMode::Browser => {
+            match input.reader.read_until(b';', &mut input.buffer) {
+                Ok(0) => Some(PeerReadResult::Close),
+                Ok(_) => {
+                    input.buffer
+                        .split_last()
+                        .map(|(_,l)| from_utf8(l).unwrap())
+                        .and_then(|s| s.split_once('*'))
+                        .map(|(_,s)| PeerReadResult::Line(s))
+                }, 
+                Err(e) if e.kind() == ErrorKind::WouldBlock => None,
+                Err(e) => {
+                    println!("Unexpected read error {e:?}");
+                    Some(PeerReadResult::Close)
+                }
+            }
+        }
     }
 }
 
-fn parse_msg(peer: &mut Peer, raw_line: &str) -> Option<Msg> {
+enum PeerReadResult<'inp> {
+    Line(&'inp str),
+    Close
+}
+
+
+fn parse_msg(peer: &PeerState, raw_line: &str) -> Option<Msg> {
     let words = match peer.mode {
         _ => {
             raw_line
@@ -139,17 +176,17 @@ fn parse_msg(peer: &mut Peer, raw_line: &str) -> Option<Msg> {
     };
 
     let parsed = match words.as_slice() {
-        &["hello", name, raw_mode] => {
+        &["hello", tag, raw_mode] => {
             let parsed_mode = match raw_mode {
                 "basic" => Some(ParseMode::Basic),
                 "browser" => Some(ParseMode::Browser),
                 _ => None
             };
 
-            parsed_mode.map(|m| Msg::Hello(name.to_string(), m))
+            parsed_mode.map(|m| Msg::Hello(tag.to_string(), m))
         }
-        &["selected", raw_ref] => {
-            Some(Msg::Selected(raw_ref.to_string()))
+        &["visited", raw_ref] => {
+            Some(Msg::Visited(raw_ref.to_string()))
         }
         _ => None
     };
@@ -161,23 +198,34 @@ fn parse_msg(peer: &mut Peer, raw_line: &str) -> Option<Msg> {
     parsed
 }
 
-fn handle_msg(ref_log: &mut VecDeque<Ref>, peer: Peer, msg: Msg) -> () {
+fn handle_msg(ref_log: &mut VecDeque<Visit>, peer: &mut PeerState, msg: Msg) -> () {
     match (&peer.mode, msg) {
-        (PeerMode::Start, Msg::Hello(new_name, new_parse_mode)) => {
-            peer.name = new_name;
+        (PeerMode::Start, Msg::Hello(new_tag, new_parse_mode)) => {
+            peer.tag = new_tag;
             peer.parse_mode = new_parse_mode;
             peer.mode = PeerMode::Active;
         }
 
-        (PeerMode::Active, Msg::Selected(r)) => {
+        (PeerMode::Active, Msg::Visited(r)) => {
             println!("ref {}", r);
-            //todo should half the log if too big here
-            ref_log.push_front(r);
+            //todo should halve the log if too big here
+            ref_log.push_front(Visit {
+                tag: peer.tag.clone(),
+                reference: r
+            });
         }
 
         _ => ()
     }
 }
+
+//have index of peers
+//instead of simple vec
+//each tag is given an integer handle
+//
+//but - what about untagged???
+
+
 
 // each connection that comes in:
 // - either it is in 'browser mode' determined by
