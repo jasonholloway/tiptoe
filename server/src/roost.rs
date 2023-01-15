@@ -24,8 +24,8 @@ impl Roost {
         self.perches.get(tag).map(|rc| rc.clone())
     }
 
-    pub fn tag_peer(&mut self, peer: RR<Peer>, tag: &Tag) -> () {
-        self.perches.insert(*tag, peer.clone());
+    pub fn tag_peer(&mut self, tag: &Tag, peer: RR<Peer>) -> () {
+        self.perches.insert(tag.to_string(), peer.clone());
     }
 
 		pub fn iter(&mut self) -> impl Iterator<Item = &RR<Peer>> {

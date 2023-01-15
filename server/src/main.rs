@@ -21,7 +21,6 @@ fn main() {
     listener.set_nonblocking(true).unwrap();
 
     let mut peers: Roost = Roost::new();
-    let mut closable_peers: Vec<usize> = Vec::new();
 
     loop {
         let mut work_done: bool = false;

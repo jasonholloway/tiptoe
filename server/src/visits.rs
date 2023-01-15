@@ -8,15 +8,15 @@ use crate::msg::{PeerTag, Ref};
 
 #[derive(Debug)]
 pub struct Visit {
-    tag: PeerTag,
-    reference: Ref
+    pub tag: PeerTag,
+    pub reference: Ref
 }
 
 pub type Visits = LossyStack<Visit>;
 
 
 
-struct LossyStack<I> {
+pub struct LossyStack<I> {
 		deque: VecDeque<I>,
 		cap: usize
 }

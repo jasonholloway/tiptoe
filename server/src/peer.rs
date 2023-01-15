@@ -107,10 +107,9 @@ impl Peer {
         msg
     }
 
-
     pub fn handle(&mut self, msg: Msg) -> Option<Msg> {
         let s = &mut self.state;
-        
+
         match (&s.mode, msg) {
             (PeerMode::Start, Msg::Hello(new_tag, new_parse_mode)) => {
                 s.tag = new_tag;
@@ -118,12 +117,10 @@ impl Peer {
                 s.mode = PeerMode::Active;
                 None
             }
-
             (PeerMode::Active, Msg::Visited(r)) => {
                 Some(Msg::VisitedTag(s.tag.to_string(), r))
             }
-
-            _ => Some(msg)
+            (_, m) => Some(m)
         }
     }
     
