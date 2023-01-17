@@ -20,12 +20,7 @@ pub struct PeerState {
     addr: SocketAddr
 }
 
-pub enum PeerReadResult<'inp> {
-    Line(&'inp str)
-}
-
 impl Peer {
-
     pub fn new(addr: SocketAddr, stream: TcpStream) -> Peer {
         Peer {
             input: PeerInput {
@@ -119,6 +114,11 @@ impl Peer {
             }
             (PeerMode::Active, Msg::Visited(r)) => {
                 Some(Msg::VisitedTag(s.tag.to_string(), r))
+            }
+            (PeerMode::Active, Msg::Revisit(r)) => {
+                //should write here??
+                println!("REVISIT");
+                None
             }
             (_, m) => Some(m)
         }

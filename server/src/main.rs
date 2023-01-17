@@ -42,7 +42,7 @@ fn main() {
             
             for m1 in p.read() {
                 for m2 in p.handle(m1) {
-                    handle_msg(&mut visits, m2);
+                    handle(&mut visits, &peers, m2);
                 }
                 work_done = true;
             }
@@ -50,6 +50,7 @@ fn main() {
 
         let cleanup_due = true;
         if cleanup_due {
+            //todo, should clean every 100 loops or similar
             peers.clean();
         }
 
@@ -59,10 +60,20 @@ fn main() {
     };
 }
 
-fn handle_msg(visits: &mut Visits, msg: Msg) -> () {
+fn handle(visits: &mut Visits, peers: &Roost, msg: Msg) -> () {
     match msg {
         Msg::VisitedTag(tag, reference) => {
             visits.push(Visit { tag: tag.to_string(), reference: reference.to_string() });
+        }
+
+        Msg::Reverse => {
+            for v in visits.pop() {
+                for perch in peers.find_perch(&v.tag) {
+                    let mut peer = perch.borrow_mut();
+                    println!("Now back to {:?}", v);
+                    peer.handle(Msg::Revisit(v.reference.to_string()));
+                }
+            }
         }
 
         _ => ()

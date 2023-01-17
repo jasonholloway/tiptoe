@@ -7,7 +7,9 @@ pub type Ref = String;
 pub enum Msg {
     Hello(PeerTag, ParseMode),
     Visited(Ref),
-    VisitedTag(PeerTag, Ref)
+    VisitedTag(PeerTag, Ref),
+    Reverse,
+    Revisit(Ref)
 }
 
 pub fn try_parse(raw_line: &str) -> Option<Msg> {
@@ -28,6 +30,9 @@ pub fn try_parse(raw_line: &str) -> Option<Msg> {
         }
         &["visited", raw_ref] => {
             Some(Msg::Visited(raw_ref.to_string()))
+        }
+        &["reverse"] => {
+            Some(Msg::Reverse)
         }
         _ => None
     };

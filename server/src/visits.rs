@@ -5,7 +5,6 @@ use crate::msg::{PeerTag, Ref};
 
 
 
-
 #[derive(Debug)]
 pub struct Visit {
     pub tag: PeerTag,
