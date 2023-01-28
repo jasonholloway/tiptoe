@@ -1,13 +1,12 @@
-use crate::peer::ParseMode;
+use crate::peer::LineMode;
 
 pub type PeerTag = String;
 pub type Ref = String;
 
 #[derive(Debug)]
 pub enum Msg {
-    Hello(PeerTag, ParseMode),
+    Hello(PeerTag, LineMode),
     Visited(Ref),
-    VisitedTag(PeerTag, Ref),
     Reverse,
     Revisit(Ref)
 }
@@ -21,8 +20,8 @@ pub fn try_parse(raw_line: &str) -> Option<Msg> {
     let parsed = match words.as_slice() {
         &["hello", tag, raw_mode] => {
             let parsed_mode = match raw_mode {
-                "basic" => Some(ParseMode::Basic),
-                "browser" => Some(ParseMode::Browser),
+                "basic" => Some(LineMode::Basic),
+                "browser" => Some(LineMode::Browser),
                 _ => None
             };
 
@@ -42,4 +41,13 @@ pub fn try_parse(raw_line: &str) -> Option<Msg> {
     }
 
     parsed
+}
+
+pub fn write<W: std::io::Write>(m: Msg, w: &mut W) -> Result<(), std::io::Error> {
+		match m {
+				Msg::Revisit(r) => {
+						write!(w, "\"revisit {}\"", r)
+				},
+				_ => Ok(())
+		}
 }

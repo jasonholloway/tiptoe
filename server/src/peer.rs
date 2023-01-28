@@ -1,10 +1,10 @@
-use crate::{BufReader, msg::{Msg, self}};
+use crate::{BufReader, msg::{Msg, self}, common::RR, traits::Actions};
 use core::fmt::Debug;
 use std::{net::{TcpStream, SocketAddr}, io::{BufRead, ErrorKind}, str::from_utf8};
 
-
 pub struct Peer {
     pub input: PeerInput,
+    pub output: PeerOutput,
     pub state: PeerState,
 }
 
@@ -13,23 +13,33 @@ pub struct PeerInput {
     buffer: Vec<u8>,
 }
 
+pub struct PeerOutput {
+    writer: TcpStream,
+		buffer: Vec<u8>
+}
+
 pub struct PeerState {
     mode: PeerMode,
-    parse_mode: ParseMode,
-    tag: String,
+    line_mode: LineMode,
+    pub tag: String,
     addr: SocketAddr
 }
 
 impl Peer {
     pub fn new(addr: SocketAddr, stream: TcpStream) -> Peer {
+        let stream2 = stream.try_clone().unwrap();
         Peer {
             input: PeerInput {
                 reader: BufReader::new(stream),
                 buffer: Vec::new()
             },
+            output: PeerOutput {
+                writer: stream2,
+                buffer: Vec::new()
+            },
             state: PeerState {
                 mode: PeerMode::Start,
-                parse_mode: ParseMode::Basic,
+                line_mode: LineMode::Basic,
                 tag: String::new(),
                 addr
             },
@@ -40,10 +50,10 @@ impl Peer {
         let s = &mut self.state;
         let input = &mut self.input;
 
-        let msg = match (&s.mode, &s.parse_mode) {
+        let msg = match (&s.mode, &s.line_mode) {
             (PeerMode::Closed, _) => None,
 
-            (_, ParseMode::Basic) => {
+            (_, LineMode::Basic) => {
                 match input.reader.read_until(b'\n', &mut input.buffer) {
                     Ok(0) => {
                         self.close();
@@ -68,7 +78,7 @@ impl Peer {
                 }
             }
 
-            (_, ParseMode::Browser) => {
+            (_, LineMode::Browser) => {
                 match input.reader.read_until(b';', &mut input.buffer) {
                     Ok(0) => {
                         self.close();
@@ -102,28 +112,15 @@ impl Peer {
         msg
     }
 
-    pub fn handle(&mut self, msg: Msg) -> Option<Msg> {
-        let s = &mut self.state;
-
-        match (&s.mode, msg) {
-            (PeerMode::Start, Msg::Hello(new_tag, new_parse_mode)) => {
-                s.tag = new_tag;
-                s.parse_mode = new_parse_mode;
-                s.mode = PeerMode::Active;
-                None
-            }
-            (PeerMode::Active, Msg::Visited(r)) => {
-                Some(Msg::VisitedTag(s.tag.to_string(), r))
-            }
-            (PeerMode::Active, Msg::Revisit(r)) => {
-                //should write here??
-                println!("REVISIT");
-                None
-            }
-            (_, m) => Some(m)
-        }
+    pub fn write(&mut self, msg: Msg) -> Result<(), std::io::Error> {
+				match self.state.line_mode {
+						_ => {
+								println!("O {:?}", &self.output.buffer);
+								msg::write(msg, &mut self.output.writer)
+						}
+				}
     }
-    
+
     fn close(&mut self) -> () {
         self.state.mode = PeerMode::Closed;
         self.log("Closed");
@@ -131,6 +128,29 @@ impl Peer {
 
     fn log<O: Debug>(&self, o: O) {
         println!("{:?}: {:?}", self.state.addr, o)
+    }
+}
+
+impl PeerState {
+    pub fn handle<A: Actions>(&mut self, a: &mut A, rc: &RR<Peer>, msg: Msg) -> () {
+        match (&self.mode, msg) {
+            (PeerMode::Start, Msg::Hello(new_tag, new_parse_mode)) => {
+                a.perch(&new_tag, rc.clone());
+
+                self.tag = new_tag;
+                self.line_mode = new_parse_mode;
+                self.mode = PeerMode::Active;
+            }
+            (PeerMode::Active, Msg::Visited(r)) => {
+                a.push_visit(self.tag.to_string(), r.to_string());
+            }
+
+            (PeerMode::Start, Msg::Reverse) => {
+                a.pop_visit();
+            }
+
+            _ => ()
+        }
     }
 }
 
@@ -142,7 +162,7 @@ pub enum PeerMode {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum ParseMode {
+pub enum LineMode {
     Basic,
     Browser
 }
@@ -153,3 +173,4 @@ impl Debug for Peer {
         self.state.addr.fmt(f)
     }
 }
+

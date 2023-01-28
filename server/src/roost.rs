@@ -1,34 +1,41 @@
-use std::{rc::Rc, cell::RefCell, collections::HashMap};
+use std::{rc::Rc, cell::RefCell, collections::HashMap, fmt::Debug};
 
-use crate::common::*;
-use crate::peer::*;
+use crate::{common::*, traits::HandleMsg};
 
-pub struct Roost {
-		peers: Vec<RR<Peer>>,
-    perches: HashMap<Tag, RR<Peer>>
+pub struct Roost<H> {
+		peers: Vec<RR<H>>,
+    perches: HashMap<String, RR<H>>,
 }
 
-impl Roost {
-		pub fn new() -> Roost {
+impl<H: Debug> Roost<H> {
+		pub fn new() -> Roost<H> {
 				Roost {
 						peers: Vec::new(),
             perches: HashMap::new()
 				}
 		}
 
-		pub fn add(&mut self, peer: Peer) -> () {
+		pub fn add(&mut self, peer: H) -> () {
 				self.peers.push(Rc::new(RefCell::new(peer)))
 		}
 
-    pub fn find_perch(&self, tag: &Tag) -> Option<RR<Peer>> {
-        self.perches.get(tag).map(|rc| rc.clone())
+    pub fn find_perch(&self, tag: &Tag) -> Option<RR<H>> {
+        println!("finding {}", tag);
+        let found = self.perches.get(tag).map(|rc| rc.clone());
+
+        for f in &found {
+            println!("found {:?}", f);
+        }
+
+        found
     }
 
-    pub fn tag_peer(&mut self, tag: &Tag, peer: RR<Peer>) -> () {
+    pub fn perch(&mut self, tag: &Tag, peer: RR<H>) -> () {
+        println!("perching {}", tag);
         self.perches.insert(tag.to_string(), peer.clone());
     }
 
-		pub fn iter(&self) -> impl Iterator<Item = &RR<Peer>> {
+		pub fn iter(&self) -> impl Iterator<Item = &RR<H>> {
         self.peers.iter()
 		}
 
@@ -38,4 +45,10 @@ impl Roost {
     }
 }
 
+impl<H: HandleMsg + Debug> Debug for Roost<H> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let r: Vec<RR<H>> = self.peers.iter().map(|r| r.clone()).collect();
+        write!(f, "{:?}", r)
+    }
+}
 
