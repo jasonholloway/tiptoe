@@ -63,12 +63,10 @@ impl Actions for Server {
     }
 
     fn pop_visit(&mut self) -> () {
-        for v in self.visits.pop() {
-            println!("Now back to {:?}", v);
-            for _perch in self.roost.find_perch(&v.tag) {
-                // println!("Found perch {}", &v.tag);
-                // let mut other = perch.borrow_mut();
-                // other.handle(&mut self.roost, blah, Msg::Revisit(v.reference.to_string()));
+        for v in self.visits.pop().and_then(|_| self.visits.peek()) {
+            for rc in self.roost.find_perch(&v.tag) {
+                let mut p = rc.borrow_mut();
+                p.revisit(&v.reference);
             }
         }
     }

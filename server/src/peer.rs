@@ -40,6 +40,7 @@ impl Peer {
             _ => {
                 match self.input.read() {
                     ReadResult::Yield(m) => {
+                        self.log(("handling", &m));
                         self.state.handle(act, pr, m);
                         true
                     },
@@ -52,6 +53,11 @@ impl Peer {
                 }
             }
         }
+    }
+
+    pub fn revisit(&mut self, reference: &str) -> () {
+        self.log(("revisiting", &reference));
+        self.output.write(Msg::Revisit(reference.to_string())).unwrap();
     }
 
     fn log<O: Debug>(&self, o: O) {

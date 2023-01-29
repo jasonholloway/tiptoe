@@ -1,4 +1,4 @@
-use std::net::TcpStream;
+use std::{net::TcpStream, io::Write};
 
 use crate::msg::{Msg, self};
 
@@ -16,7 +16,8 @@ impl PeerOutput {
     }
     
     pub fn write(&mut self, msg: Msg) -> Result<(), std::io::Error> {
-        println!("O {:?}", &self.buffer);
-        msg::write(msg, &mut self.writer)
+        // println!("O {:?}", &self.buffer);
+        msg::write(msg, &mut self.writer).unwrap();
+        self.writer.flush()
     }
 }

@@ -1,3 +1,5 @@
+use std::ptr::write_bytes;
+
 pub type PeerTag = String;
 pub type Ref = String;
 
@@ -38,7 +40,7 @@ pub fn try_parse(raw_line: &str) -> Option<Msg> {
 pub fn write<W: std::io::Write>(m: Msg, w: &mut W) -> Result<(), std::io::Error> {
 		match m {
 				Msg::Revisit(r) => {
-						write!(w, "\"revisit {}\"", r)
+						writeln!(w, "revisit {}", r)
 				},
 				_ => Ok(())
 		}
