@@ -1,11 +1,9 @@
-use crate::peer::LineMode;
-
 pub type PeerTag = String;
 pub type Ref = String;
 
 #[derive(Debug)]
 pub enum Msg {
-    Hello(PeerTag, LineMode),
+    Hello(PeerTag),
     Visited(Ref),
     Reverse,
     Revisit(Ref)
@@ -18,14 +16,8 @@ pub fn try_parse(raw_line: &str) -> Option<Msg> {
         .collect::<Vec<_>>();
 
     let parsed = match words.as_slice() {
-        &["hello", tag, raw_mode] => {
-            let parsed_mode = match raw_mode {
-                "basic" => Some(LineMode::Basic),
-                "browser" => Some(LineMode::Browser),
-                _ => None
-            };
-
-            parsed_mode.map(|m| Msg::Hello(tag.to_string(), m))
+        &["hello", tag] => {
+            Some(Msg::Hello(tag.to_string()))
         }
         &["visited", raw_ref] => {
             Some(Msg::Visited(raw_ref.to_string()))

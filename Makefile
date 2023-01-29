@@ -1,5 +1,5 @@
 installMediatorApp: browser/mediator/mediate.sh
-	ln -s -f /usr/local/src/tiptoe/browser/mediator/mediate.sh /usr/local/bin/tiptoe-browser-mediate
+	ln -s -f /usr/local/src/tiptoe/browser/mediator/mediate.pl /usr/local/bin/tiptoe-browser-mediate
 
 installMediatorFirefox: browser/mediator/firefox/tiptoe_mediator.json
 	mkdir -p ~/.mozilla/native-messaging-hosts

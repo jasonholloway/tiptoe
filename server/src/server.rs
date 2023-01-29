@@ -1,6 +1,6 @@
-use std::{net::TcpListener, io::ErrorKind, time::Duration, collections::VecDeque};
+use std::{net::TcpListener, io::ErrorKind, time::Duration};
 
-use crate::{roost::Roost, visits::{Visits, Visit}, common::{Tag, RR}, traits::Actions, peer::Peer, msg::Msg};
+use crate::{roost::Roost, visits::{Visits, Visit}, common::{Tag, RR}, traits::Actions, peer::Peer};
 
 pub struct Server {
     visits: Visits,
@@ -16,8 +16,6 @@ impl Server {
     }
 
     pub fn pump(&mut self, listener: TcpListener) {
-        let mut buff: VecDeque<(RR<Peer>,Msg)> = VecDeque::new();
-        
         loop {
             let mut work_done: bool = false;
 
@@ -33,17 +31,13 @@ impl Server {
                 }
             };
 
-            for pr in self.roost.iter() {
-                let mut p = pr.borrow_mut();
-                for m in p.read() {
-                    buff.push_back((pr.clone(),m));
-                }
-            }
+            let prs: Vec<RR<Peer>> = self.roost.iter()
+                .map(|r| r.clone())
+                .collect();
 
-            while let Some((pr,m)) = buff.pop_front() {
+            for pr in prs {
                 let mut p = pr.borrow_mut();
-                p.state.handle(self, &pr, m);
-                work_done = true;
+                work_done = p.pump(self, &pr);
             }
 
             let cleanup_due = true;
