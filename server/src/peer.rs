@@ -40,13 +40,13 @@ impl Peer {
             _ => {
                 match self.input.read() {
                     ReadResult::Yield(m) => {
-                        self.log(("handling", &m));
+                        // self.log(("handling", &m));
                         self.state.handle(act, pr, m);
                         true
                     },
                     ReadResult::Continue => false,
                     ReadResult::Stop => {
-                        self.log("Closed");
+                        // self.log("Closed");
                         self.state.mode = PeerMode::Closed;
                         true
                     }
@@ -77,8 +77,11 @@ impl PeerState {
                 a.push_visit(self.tag.to_string(), r.to_string());
             }
 
-            (PeerMode::Start, Msg::Reverse) => {
+            (_, Msg::Reverse) => {
                 a.pop_visit();
+            }
+            (_, Msg::Clear) => {
+                a.clear_visits();
             }
 
             _ => ()

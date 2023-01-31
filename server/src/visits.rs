@@ -45,4 +45,8 @@ impl<I: Debug> LossyStack<I> {
 		pub fn peek(&self) -> Option<&I> {
 				self.deque.front()
 		}
+
+		pub fn clear(&mut self) -> () {
+				self.deque.clear();
+		}
 }

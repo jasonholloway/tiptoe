@@ -16,7 +16,7 @@ impl PeerOutput {
     }
     
     pub fn write(&mut self, msg: Msg) -> Result<(), std::io::Error> {
-        // println!("O {:?}", &self.buffer);
+        println!("OUT {:?}", &msg);
         msg::write(msg, &mut self.writer).unwrap();
         self.writer.flush()
     }

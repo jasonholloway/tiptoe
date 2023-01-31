@@ -1,5 +1,3 @@
-use std::ptr::write_bytes;
-
 pub type PeerTag = String;
 pub type Ref = String;
 
@@ -7,8 +5,10 @@ pub type Ref = String;
 pub enum Msg {
     Hello(PeerTag),
     Visited(Ref),
+    Revisit(Ref),
+
     Reverse,
-    Revisit(Ref)
+    Clear
 }
 
 pub fn try_parse(raw_line: &str) -> Option<Msg> {
@@ -26,6 +26,9 @@ pub fn try_parse(raw_line: &str) -> Option<Msg> {
         }
         &["reverse"] => {
             Some(Msg::Reverse)
+        }
+        &["clear"] => {
+            Some(Msg::Clear)
         }
         _ => None
     };

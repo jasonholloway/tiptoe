@@ -4,16 +4,35 @@ port.onDisconnect.addListener(p => {
     if(p.error) console.error(p.error);
 });
 
-port.onMessage.addListener(m => {
-    console.log('received', m);
-});
+
+let currTabId = null;
 
 browser.tabs.onActivated.addListener(({tabId,previousTabId,windowId}) => {
     console.log('activated', tabId);
 
-    const m = `visited ${windowId}/${tabId}`;
-    console.log('posting', m);
-
-    port.postMessage(m);
-    console.log('posted', m);
+    if(currTabId != tabId) {
+        const m = `visited ${windowId}/${tabId}`;
+        port.postMessage(m);
+        console.log('posted', m);
+        currTabId = tabId;
+    }
 });
+
+port.onMessage.addListener(m => {
+    console.log("received", m);
+    
+    if(typeof m === "string") {
+        const matched = m.match(/^revisit (\d+)\/(\d+)/);
+        if(matched) {
+            const [,rawWindowId,rawTabId] = matched;
+            const windowId = parseInt(rawWindowId);
+            const tabId = parseInt(rawTabId);
+
+            console.log("switch to", windowId, tabId);
+
+            currTabId = tabId;
+            browser.tabs.update(tabId, { active:true });
+        }
+    }
+});
+

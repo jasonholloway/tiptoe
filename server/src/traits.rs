@@ -4,6 +4,7 @@ pub trait Actions {
     fn perch(&mut self, tag: &Tag, cell: RR<Peer>) -> ();
     fn push_visit(&mut self, tag: Tag, reference: String) -> ();
     fn pop_visit(&mut self) -> ();
+    fn clear_visits(&mut self) -> ();
 }
 
 pub trait HandleMsg {

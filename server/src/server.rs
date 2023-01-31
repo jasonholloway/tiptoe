@@ -70,5 +70,9 @@ impl Actions for Server {
             }
         }
     }
+
+    fn clear_visits(&mut self) -> () {
+        self.visits.clear();
+    }
 }
 
