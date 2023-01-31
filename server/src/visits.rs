@@ -6,12 +6,13 @@ use crate::msg::{PeerTag, Ref};
 
 
 #[derive(Debug)]
-pub struct Visit {
+pub struct Step {
     pub tag: PeerTag,
-    pub reference: Ref
+		pub from: Ref,
+		pub to: Ref
 }
 
-pub type Visits = LossyStack<Visit>;
+pub type Visits = LossyStack<Step>;
 
 
 
@@ -33,7 +34,7 @@ impl<I: Debug> LossyStack<I> {
 						self.deque.truncate(self.cap / 2);
 				}
 
-        println!("pushed {:?}", &item);
+        // println!("pushed {:?}", &item);
 				
 				self.deque.push_front(item);
 		}
@@ -50,3 +51,17 @@ impl<I: Debug> LossyStack<I> {
 				self.deque.clear();
 		}
 }
+
+/*
+but now we need to switch windows as well
+Visited(ref) needs to include window id in its ref
+
+then we can tell sway to move to the window id
+
+that means we need to hook into sway changes first and foremost
+just a series of changes
+
+SWAY HOOS PLEASE
+
+
+*/

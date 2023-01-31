@@ -1,14 +1,24 @@
+use crate::{common::RR, peer::Peer, visits::Step};
+
 pub type PeerTag = String;
 pub type Ref = String;
 
 #[derive(Debug)]
 pub enum Msg {
     Hello(PeerTag),
-    Visited(Ref),
-    Revisit(Ref),
+    Stepped(Ref,Ref),
+    Goto(Ref),
 
     Reverse,
     Clear
+}
+
+#[derive(Debug)]
+pub enum Cmd {
+    Stepped(Step),
+    Reverse,
+    Clear,
+    Perch(PeerTag, RR<Peer>)
 }
 
 pub fn try_parse(raw_line: &str) -> Option<Msg> {
@@ -21,8 +31,8 @@ pub fn try_parse(raw_line: &str) -> Option<Msg> {
         &["hello", tag] => {
             Some(Msg::Hello(tag.to_string()))
         }
-        &["visited", raw_ref] => {
-            Some(Msg::Visited(raw_ref.to_string()))
+        &["stepped", from_ref, to_ref] => {
+            Some(Msg::Stepped(from_ref.to_string(), to_ref.to_string()))
         }
         &["reverse"] => {
             Some(Msg::Reverse)
@@ -42,8 +52,8 @@ pub fn try_parse(raw_line: &str) -> Option<Msg> {
 
 pub fn write<W: std::io::Write>(m: Msg, w: &mut W) -> Result<(), std::io::Error> {
 		match m {
-				Msg::Revisit(r) => {
-						writeln!(w, "revisit {}", r)
+				Msg::Goto(r) => {
+						writeln!(w, "goto {}", r)
 				},
 				_ => Ok(())
 		}

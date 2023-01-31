@@ -1,6 +1,6 @@
 use std::{rc::Rc, cell::RefCell, collections::HashMap, fmt::Debug};
 
-use crate::{common::*, traits::HandleMsg};
+use crate::common::*;
 
 pub struct Roost<H> {
 		peers: Vec<RR<H>>,
@@ -20,17 +20,10 @@ impl<H: Debug> Roost<H> {
 		}
 
     pub fn find_perch(&self, tag: &Tag) -> Option<RR<H>> {
-        println!("finding {}", tag);
-        let found = self.perches.get(tag).map(|rc| rc.clone());
-
-        for f in &found {
-            println!("found {:?}", f);
-        }
-
-        found
+        self.perches.get(tag).map(|rc| rc.clone())
     }
 
-    pub fn perch(&mut self, tag: &Tag, peer: RR<H>) -> () {
+    pub fn perch(&mut self, tag: Tag, peer: RR<H>) -> () {
         println!("perching {}", tag);
         self.perches.insert(tag.to_string(), peer.clone());
     }
@@ -45,7 +38,7 @@ impl<H: Debug> Roost<H> {
     }
 }
 
-impl<H: HandleMsg + Debug> Debug for Roost<H> {
+impl<H: Debug> Debug for Roost<H> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let r: Vec<RR<H>> = self.peers.iter().map(|r| r.clone()).collect();
         write!(f, "{:?}", r)

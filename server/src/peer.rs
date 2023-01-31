@@ -1,7 +1,7 @@
-use crate::{msg::Msg, common::RR, traits::Actions};
+use crate::{msg::{Msg, Cmd}, common::RR, visits::Step};
 
 use core::fmt::Debug;
-use std::net::{TcpStream, SocketAddr};
+use std::{net::{TcpStream, SocketAddr}, collections::VecDeque};
 
 use self::{input::{PeerInput, ReadResult}, output::PeerOutput};
 
@@ -34,19 +34,19 @@ impl Peer {
         }
     }
 
-    pub fn pump<A: Actions>(&mut self, act: &mut A, pr: &RR<Peer>) -> bool {
+    pub fn pump(&mut self, pr: &RR<Peer>, cmds: &mut VecDeque<Cmd>) -> bool {
         match self.state.mode {
             PeerMode::Closed => false,
             _ => {
                 match self.input.read() {
                     ReadResult::Yield(m) => {
-                        // self.log(("handling", &m));
-                        self.state.handle(act, pr, m);
+                        if let Some(m2) = self.state.handle(pr, m) {
+                            cmds.push_back(m2);
+                        }
                         true
                     },
                     ReadResult::Continue => false,
                     ReadResult::Stop => {
-                        // self.log("Closed");
                         self.state.mode = PeerMode::Closed;
                         true
                     }
@@ -55,36 +55,36 @@ impl Peer {
         }
     }
 
-    pub fn revisit(&mut self, reference: &str) -> () {
-        self.log(("revisiting", &reference));
-        self.output.write(Msg::Revisit(reference.to_string())).unwrap();
+    pub fn goto(&mut self, rf: &str) -> () {
+        self.log("OUT", format!("goto {}", &rf));
+        self.output.write(Msg::Goto(rf.to_string())).unwrap();
     }
 
-    fn log<O: Debug>(&self, o: O) {
-        println!("{:?}: {:?}", self.state.addr, o)
+    fn log<O: Debug>(&self, typ: &str, o: O) {
+        println!("{:?}@{} {} {:?}", self.state.addr, self.state.tag, typ, o)
     }
 }
 
 impl PeerState {
-    pub fn handle<A: Actions>(&mut self, a: &mut A, rc: &RR<Peer>, msg: Msg) -> () {
+    pub fn handle(&mut self, rc: &RR<Peer>, msg: Msg) -> Option<Cmd> {
         match (&self.mode, msg) {
             (PeerMode::Start, Msg::Hello(new_tag)) => {
-                a.perch(&new_tag, rc.clone());
-                self.tag = new_tag;
+                self.tag = new_tag.to_string();
                 self.mode = PeerMode::Active;
+                Some(Cmd::Perch(new_tag, rc.clone()))
             }
-            (PeerMode::Active, Msg::Visited(r)) => {
-                a.push_visit(self.tag.to_string(), r.to_string());
+            (PeerMode::Active, Msg::Stepped(from, to)) => {
+                Some(Cmd::Stepped(Step { tag: self.tag.to_string(), from, to }))
             }
 
             (_, Msg::Reverse) => {
-                a.pop_visit();
+                Some(Cmd::Reverse)
             }
             (_, Msg::Clear) => {
-                a.clear_visits();
+                Some(Cmd::Clear)
             }
 
-            _ => ()
+            _ => None
         }
     }
 }

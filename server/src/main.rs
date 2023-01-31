@@ -3,7 +3,6 @@ mod msg;
 mod peer;
 mod roost;
 mod visits;
-mod traits;
 mod server;
 
 use server::Server;

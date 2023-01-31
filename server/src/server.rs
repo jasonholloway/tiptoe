@@ -1,17 +1,19 @@
-use std::{net::TcpListener, io::ErrorKind, time::Duration};
+use std::{net::TcpListener, io::ErrorKind, time::Duration, collections::VecDeque};
 
-use crate::{roost::Roost, visits::{Visits, Visit}, common::{Tag, RR}, traits::Actions, peer::Peer};
+use crate::{roost::Roost, visits::Visits, common::RR, peer::Peer, msg::Cmd};
 
 pub struct Server {
-    visits: Visits,
-    roost: Roost<Peer>
+    steps: Visits,
+    roost: Roost<Peer>,
+    cmds: VecDeque<Cmd>
 }
 
 impl Server {
     pub fn new() -> Server {
         Server {
-            visits: Visits::new(128),
-            roost: Roost::new()
+            steps: Visits::new(128),
+            roost: Roost::new(),
+            cmds: VecDeque::new()
         }
     }
 
@@ -37,12 +39,17 @@ impl Server {
 
             for pr in prs {
                 let mut p = pr.borrow_mut();
-                work_done = p.pump(self, &pr);
+                work_done |= p.pump(&pr, &mut self.cmds);
+            }
+
+            while let Some(cmd) = self.cmds.pop_front() {
+                work_done |= self.handle(cmd);
             }
 
             let cleanup_due = true;
             if cleanup_due {
                 //todo, should clean every 100 loops or similar
+                //any closed peers in roost: get rid
                 self.roost.clean();
             }
 
@@ -51,28 +58,31 @@ impl Server {
             }
         };
     }
-}
 
-impl Actions for Server {
-    fn perch(&mut self, tag: &Tag, peer: RR<Peer>) -> () {
-        self.roost.perch(tag, peer);
-    }
-
-    fn push_visit(&mut self, tag: Tag, reference: String) -> () {
-        self.visits.push(Visit { tag: tag.to_string(), reference: reference.to_string() });
-    }
-
-    fn pop_visit(&mut self) -> () {
-        for v in self.visits.pop().and_then(|_| self.visits.peek()) {
-            for rc in self.roost.find_perch(&v.tag) {
-                let mut p = rc.borrow_mut();
-                p.revisit(&v.reference);
+    fn handle(&mut self, cmd: Cmd) -> bool {
+        println!("CMD {:?}", &cmd);
+        match cmd {
+            Cmd::Perch(tag, pr) => {
+                self.roost.perch(tag, pr);
+                true
+            }
+            Cmd::Stepped(step) => {
+                self.steps.push(step);
+                true
+            }
+            Cmd::Reverse => {
+                for step in self.steps.pop() {
+                    for rc in self.roost.find_perch(&step.tag) {
+                        let mut p = rc.borrow_mut();
+                        p.goto(&step.from);
+                    }
+                }
+                true
+            }
+            Cmd::Clear => {
+                self.steps.clear();
+                true
             }
         }
     }
-
-    fn clear_visits(&mut self) -> () {
-        self.visits.clear();
-    }
 }
-

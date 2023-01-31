@@ -25,8 +25,11 @@ fcntl(TIPTOE, F_SETFL, fcntl(TIPTOE, F_GETFL, 0) | O_NONBLOCK)
 TIPTOE->autoflush(1);
 
 
-# print TIPTOE "hello sway\n";
+open(DUMP, '>', 'sway_ipc.dump')
+    or die "Can't open dump file";
+DUMP->autoflush(1);
 
+STDERR->autoflush(1);
 
 
 my $swayInBuff = "";
@@ -41,6 +44,10 @@ my $tiptoeOutBuff = "";
 
 tiptoeWrite('hello sway');
 swayWrite(2,'["window","binding"]');
+
+
+my $currCid = 0;
+my $expectedCid = 0;
 
 while (1) {
     my $workDone = 0;
@@ -73,6 +80,7 @@ while (1) {
     if(length($swayOutBuff)) {
         my $c = syswrite(SWAY,$swayOutBuff);
         if(defined($c) && $c > 0) {
+            print DUMP substr($swayOutBuff, 0, $c);
             $swayOutBuff = substr($swayOutBuff, $c);
             $workDone = 1;
         }
@@ -80,6 +88,8 @@ while (1) {
 
     if ($tiptoeInBuff =~ /^(.*?)\n(.*)$/) {
         $tiptoeInLine = $1;
+        print STDERR "\e[1;31m< " . $tiptoeInLine . "\e[1;0m\n";
+        
         $tiptoeInBuff = $2;
         $workDone = 1;
     }
@@ -118,7 +128,10 @@ while (1) {
                 }
 
                 if ($cid > 0) {
-                    tiptoeWrite("visited $cid`$appId`$pid");
+                    if ($cid != $expectedCid) {
+                        tiptoeWrite("stepped $currCid`` $cid``");
+                    }
+                    $currCid = $cid;
                 }
             }
         }
@@ -131,9 +144,10 @@ while (1) {
             }
         }
 
-        if ($tiptoeInLine =~ /^revisit (\d+)`/) {
+        if ($tiptoeInLine =~ /^goto (\d+)`/) {
             my $cid = $1;
-            swayWrite(0, "[cond_id=$cid] focus");
+            $expectedCid=$cid;
+            swayWrite(0, "[con_id=$cid] focus");
         }
     }
 
@@ -145,6 +159,7 @@ while (1) {
 
 close(SWAY);
 close(TIPTOE);
+close(DUMP);
 
 
 sub swayWrite {
@@ -154,5 +169,6 @@ sub swayWrite {
 
 sub tiptoeWrite {
     my ($line) = @_;
+    print STDERR "\e[1;32m> " . $line . "\e[1;0m\n";
     $tiptoeOutBuff .= $line . "\n";
 }
