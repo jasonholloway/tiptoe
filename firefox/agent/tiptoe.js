@@ -11,7 +11,7 @@ browser.tabs.onActivated.addListener(({tabId,previousTabId,windowId}) => {
     console.log('activated', tabId);
 
     if(currTabId != tabId) {
-        const m = `visited ${windowId}/${tabId}`;
+        const m = `stepped ${windowId}/${previousTabId} ${windowId}/${tabId}`;
         port.postMessage(m);
         console.log('posted', m);
         currTabId = tabId;
@@ -22,7 +22,7 @@ port.onMessage.addListener(m => {
     console.log("received", m);
     
     if(typeof m === "string") {
-        const matched = m.match(/^revisit (\d+)\/(\d+)/);
+        const matched = m.match(/^goto (\d+)\/(\d+)/);
         if(matched) {
             const [,rawWindowId,rawTabId] = matched;
             const windowId = parseInt(rawWindowId);
