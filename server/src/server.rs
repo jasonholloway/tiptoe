@@ -1,9 +1,9 @@
-use std::{net::TcpListener, io::ErrorKind, time::Duration, collections::VecDeque};
+use std::{net::TcpListener, io::ErrorKind, time::Duration, collections::VecDeque, fmt::Write};
 
-use crate::{roost::Roost, visits::Visits, common::RR, peer::Peer, msg::Cmd};
+use crate::{roost::Roost, visits::{Visits, LossyStack, Step}, common::RR, peer::Peer, msg::Cmd};
 
 pub struct Server {
-    steps: Visits,
+    steps: LossyStack<Step>,
     roost: Roost<Peer>,
     cmds: VecDeque<Cmd>
 }
@@ -17,7 +17,7 @@ impl Server {
         }
     }
 
-    pub fn pump(&mut self, listener: TcpListener) {
+    pub fn pump<W: std::io::Write>(&mut self, listener: TcpListener, log: &mut W) {
         loop {
             let mut work_done: bool = false;
 
@@ -43,6 +43,7 @@ impl Server {
             }
 
             while let Some(cmd) = self.cmds.pop_front() {
+                writeln!(log, "\t\t\t{:?}", cmd).unwrap();
                 work_done |= self.handle(cmd);
             }
 
@@ -60,7 +61,6 @@ impl Server {
     }
 
     fn handle(&mut self, cmd: Cmd) -> bool {
-        println!("CMD {:?}", &cmd);
         match cmd {
             Cmd::Perch(tag, pr) => {
                 self.roost.perch(tag, pr);
@@ -76,6 +76,17 @@ impl Server {
                         let mut p = rc.borrow_mut();
                         p.goto(&step.from);
                     }
+                }
+                true
+            }
+            Cmd::Hop => {
+                if let Some(step) = self.steps.pop().map(|s| s.flip()) {
+                    for rc in self.roost.find_perch(&step.tag) {
+                        let mut p = rc.borrow_mut();
+                        p.goto(&step.to);
+                    }
+
+                    self.steps.push(step);
                 }
                 true
             }

@@ -12,6 +12,21 @@ pub struct Step {
 		pub to: Ref
 }
 
+impl Step {
+		pub fn flip(self) -> Step {
+				Step {
+						tag: self.tag,
+						from: self.to,
+						to: self.from
+				}
+		}
+}
+
+
+
+
+
+
 pub type Visits = LossyStack<Step>;
 
 

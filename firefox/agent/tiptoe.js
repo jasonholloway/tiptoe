@@ -1,20 +1,20 @@
 
-const port = browser.runtime.connectNative('tiptoe_mediator');
+const port = browser.runtime.connectNative('tiptoe_firefox_mediate');
 port.onDisconnect.addListener(p => {
-    if(p.error) console.error(p.error);
+    if(p.error) console.error('Disconnected with error:', p.error);
 });
 
 
-let currTabId = null;
+let tabMask = null;
 
 browser.tabs.onActivated.addListener(({tabId,previousTabId,windowId}) => {
     console.log('activated', tabId);
 
-    if(currTabId != tabId) {
+    if(tabId != tabMask) {
         const m = `stepped ${windowId}/${previousTabId} ${windowId}/${tabId}`;
         port.postMessage(m);
         console.log('posted', m);
-        currTabId = tabId;
+        tabMask = tabId;
     }
 });
 
@@ -30,7 +30,7 @@ port.onMessage.addListener(m => {
 
             console.log("switch to", windowId, tabId);
 
-            currTabId = tabId;
+            tabMask = tabId;
             browser.tabs.update(tabId, { active:true });
         }
     }

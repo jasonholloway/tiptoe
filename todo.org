@@ -1,0 +1,20 @@
+
+* todo
+** sway
+*** only 'proper' sway containers should count
+**** how to distinguish? free-floating?
+*** missing windows should be skipped
+**** would require a confirmation message on the 'goto'
+*** sway buffer should cope with multiple messages
+*** cope with server outage
+** firefox
+*** cope with server outage
+** server
+*** hoppity hop into the past
+** tmux
+*** todo
+
+
+
+
+

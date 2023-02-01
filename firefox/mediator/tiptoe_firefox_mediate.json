@@ -1,5 +1,5 @@
 {
-    "name": "tiptoe_mediator",
+    "name": "tiptoe_firefox_mediate",
     "description": "Routes TipToe events and commands back and forth into the browser",
     "path": "tiptoe-firefox-mediate",
     "type": "stdio",

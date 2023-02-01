@@ -29,7 +29,15 @@ open(DUMP, '>', 'sway_ipc.dump')
     or die "Can't open dump file";
 DUMP->autoflush(1);
 
+
 STDERR->autoflush(1);
+
+
+socket(LOG, PF_INET, Socket::SOCK_STREAM, getprotobyname('tcp'))
+    or die "Can't create socket";
+connect(LOG, sockaddr_in(17879, inet_aton("100.110.110.38")))
+    or die "can't connect to server!";
+LOG->autoflush(1);
 
 
 my $swayInBuff = "";
@@ -38,13 +46,8 @@ my $swayOutBuff = "";
 my $tiptoeInBuff = "";
 my $tiptoeOutBuff = "";
 
-# $tiptoeOutBuff .= "hello sway\n";
-# $swayOutBuff .= "i3-ipc" . pack("V",19) . pack("V",2). '["window","binding"]';
-
-
 tiptoeWrite('hello sway');
 swayWrite(2,'["window","binding"]');
-
 
 my $currCid = 0;
 my $expectedCid = 0;
@@ -88,7 +91,7 @@ while (1) {
 
     if ($tiptoeInBuff =~ /^(.*?)\n(.*)$/) {
         $tiptoeInLine = $1;
-        print STDERR "\e[1;31m< " . $tiptoeInLine . "\e[1;0m\n";
+        print LOG "\e[1;31m< " . $tiptoeInLine . "\e[1;0m\n";
         
         $tiptoeInBuff = $2;
         $workDone = 1;
@@ -127,7 +130,7 @@ while (1) {
                     $name = $1;
                 }
 
-                if ($cid > 0) {
+                if ($cid != $currCid) {
                     if ($cid != $expectedCid) {
                         tiptoeWrite("stepped $currCid`` $cid``");
                     }
@@ -140,6 +143,9 @@ while (1) {
             if ($swayInPayload =~ /"change":\W*"run"/) {
                 if ($swayInPayload =~ /"symbols":\W*\[\W*"grave"\W*\]/) {
                     tiptoeWrite("reverse");
+                }
+                if ($swayInPayload =~ /"symbols":\W*\[\W*"Tab"\W*\]/) {
+                    tiptoeWrite("hop");
                 }
             }
         }
@@ -164,11 +170,12 @@ close(DUMP);
 
 sub swayWrite {
     my ($type,$payload) = @_;
+    print LOG "\e[1;33m> " . $type . " " . $payload . "\e[1;0m\n\n";
     $swayOutBuff .= "i3-ipc" . pack("V",length($payload)) . pack("V",$type). $payload;
 }
 
 sub tiptoeWrite {
     my ($line) = @_;
-    print STDERR "\e[1;32m> " . $line . "\e[1;0m\n";
+    print LOG "\e[1;32m> " . $line . "\e[1;0m\n";
     $tiptoeOutBuff .= $line . "\n";
 }

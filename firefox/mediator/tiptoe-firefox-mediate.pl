@@ -5,13 +5,15 @@ use warnings;
 use Fcntl;
 use Socket;
 
+socket(LOG, PF_INET, Socket::SOCK_STREAM, getprotobyname('tcp'))
+    or die "Can't create socket";
+connect(LOG, sockaddr_in(17879, inet_aton("100.110.110.38")))
+    or die "can't connect to server!";
+LOG->autoflush(1);
+
+
 fcntl(STDIN, F_SETFL, fcntl(STDIN, F_GETFL, 0) | O_NONBLOCK)
     or die "fcntl problem";
-
-
-sysopen(LOG, "/home/jason/tiptoe-mediator.log", O_WRONLY | O_APPEND)
-    or die "Can't open log file for writing";
-LOG->autoflush(1);
 
 
 socket(SERVER, PF_INET, Socket::SOCK_STREAM | Socket::SOCK_CLOEXEC, getprotobyname('tcp'))

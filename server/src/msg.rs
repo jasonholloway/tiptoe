@@ -10,6 +10,7 @@ pub enum Msg {
     Goto(Ref),
 
     Reverse,
+    Hop,
     Clear
 }
 
@@ -17,6 +18,7 @@ pub enum Msg {
 pub enum Cmd {
     Stepped(Step),
     Reverse,
+    Hop,
     Clear,
     Perch(PeerTag, RR<Peer>)
 }
@@ -36,6 +38,9 @@ pub fn try_parse(raw_line: &str) -> Option<Msg> {
         }
         &["reverse"] => {
             Some(Msg::Reverse)
+        }
+        &["hop"] => {
+            Some(Msg::Hop)
         }
         &["clear"] => {
             Some(Msg::Clear)

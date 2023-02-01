@@ -24,7 +24,7 @@ impl<H: Debug> Roost<H> {
     }
 
     pub fn perch(&mut self, tag: Tag, peer: RR<H>) -> () {
-        println!("perching {}", tag);
+        // println!("perching {}", tag);
         self.perches.insert(tag.to_string(), peer.clone());
     }
 

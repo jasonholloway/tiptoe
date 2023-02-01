@@ -61,7 +61,7 @@ impl Peer {
     }
 
     fn log<O: Debug>(&self, typ: &str, o: O) {
-        println!("{:?}@{} {} {:?}", self.state.addr, self.state.tag, typ, o)
+        // println!("{:?}@{} {} {:?}", self.state.addr, self.state.tag, typ, o)
     }
 }
 
@@ -79,6 +79,9 @@ impl PeerState {
 
             (_, Msg::Reverse) => {
                 Some(Cmd::Reverse)
+            }
+            (_, Msg::Hop) => {
+                Some(Cmd::Hop)
             }
             (_, Msg::Clear) => {
                 Some(Cmd::Clear)
