@@ -7,7 +7,7 @@ use Socket;
 
 socket(LOG, PF_INET, Socket::SOCK_STREAM, getprotobyname('tcp'))
     or die "Can't create socket";
-connect(LOG, sockaddr_in(17879, inet_aton("100.110.110.38")))
+connect(LOG, sockaddr_in(17879, inet_aton("127.0.0.1")))
     or die "can't connect to server!";
 LOG->autoflush(1);
 
@@ -39,13 +39,12 @@ while (1) {
     my $workDone = 0;
     
     if(defined(sysread(STDIN, $stdinBuffer, 4))) {
-        $workDone = 1;
-
         my $c = unpack("V",$stdinBuffer);
         if(defined($c) && defined(sysread(STDIN, $stdinBuffer, $c))) {
             $stdinBuffer =~ s/(^")|("$)//g;
             print SERVER "$stdinBuffer\n";
             print LOG "ff>tiptoe $c $stdinBuffer\n";
+            $workDone = 1;
         }
     }
 

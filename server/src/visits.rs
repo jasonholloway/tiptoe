@@ -13,11 +13,11 @@ pub struct Step {
 }
 
 impl Step {
-		pub fn flip(self) -> Step {
+		pub fn flip(&self) -> Step {
 				Step {
-						tag: self.tag,
-						from: self.to,
-						to: self.from
+						tag: self.tag.to_string(),
+						from: self.to.to_string(),
+						to: self.from.to_string()
 				}
 		}
 }
@@ -32,7 +32,7 @@ pub type Visits = LossyStack<Step>;
 
 
 pub struct LossyStack<I> {
-		deque: VecDeque<I>,
+		pub deque: VecDeque<I>,
 		cap: usize
 }
 

@@ -16,11 +16,10 @@ pub enum Msg {
 
 #[derive(Debug)]
 pub enum Cmd {
+    Perch(PeerTag, RR<Peer>),
     Stepped(Step),
-    Reverse,
     Hop,
-    Clear,
-    Perch(PeerTag, RR<Peer>)
+    Clear
 }
 
 pub fn try_parse(raw_line: &str) -> Option<Msg> {
@@ -35,9 +34,6 @@ pub fn try_parse(raw_line: &str) -> Option<Msg> {
         }
         &["stepped", from_ref, to_ref] => {
             Some(Msg::Stepped(from_ref.to_string(), to_ref.to_string()))
-        }
-        &["reverse"] => {
-            Some(Msg::Reverse)
         }
         &["hop"] => {
             Some(Msg::Hop)

@@ -35,7 +35,7 @@ STDERR->autoflush(1);
 
 socket(LOG, PF_INET, Socket::SOCK_STREAM, getprotobyname('tcp'))
     or die "Can't create socket";
-connect(LOG, sockaddr_in(17879, inet_aton("100.110.110.38")))
+connect(LOG, sockaddr_in(17879, inet_aton("127.0.0.1")))
     or die "can't connect to server!";
 LOG->autoflush(1);
 

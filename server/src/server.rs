@@ -1,98 +1,132 @@
-use std::{net::TcpListener, io::ErrorKind, time::Duration, collections::VecDeque, fmt::Write};
+use std::{net::TcpListener, io::ErrorKind, time::{Duration, Instant}, collections::VecDeque};
 
-use crate::{roost::Roost, visits::{Visits, LossyStack, Step}, common::RR, peer::Peer, msg::Cmd};
+use crate::{roost::Roost, visits::{LossyStack, Step}, peer::Peer, msg::Cmd};
 
 pub struct Server {
-    steps: LossyStack<Step>,
+    cmds: VecDeque<Cmd>,
     roost: Roost<Peer>,
-    cmds: VecDeque<Cmd>
+    history: LossyStack<Step>,
+    stack: LossyStack<Step>,
+    last_cleanup: Instant
 }
 
+pub enum State {
+    AtRest,
+    Moving(Instant, Step)
+}
+
+impl std::fmt::Debug for State {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            State::AtRest => f.write_str("AtRest"),
+            State::Moving(_,_) => f.write_str("Moving"),
+        }
+    }
+}
+
+
 impl Server {
-    pub fn new() -> Server {
+    pub fn new(now: Instant) -> Server {
         Server {
-            steps: Visits::new(128),
             roost: Roost::new(),
+            history: LossyStack::new(128),
+            stack: LossyStack::new(128),
+            last_cleanup: now,
             cmds: VecDeque::new()
         }
     }
 
-    pub fn pump<W: std::io::Write>(&mut self, listener: TcpListener, log: &mut W) {
-        loop {
-            let mut work_done: bool = false;
+    pub fn pump<W: std::io::Write>(&mut self, mut state: State, listener: &mut TcpListener, now: Instant, log: &mut W) -> (State, bool) {
+        let mut work_done: bool = false;
 
-            match listener.accept() {
-                Ok((stream, address)) => {
-                    stream.set_nonblocking(true).unwrap();
-                    self.roost.add(Peer::new(address, stream));
-                    work_done = true;
-                }
-                Err(e) if e.kind() == ErrorKind::WouldBlock => {}
-                Err(e) => {
-                    panic!("Unexpected connect error {e:?}")
-                }
-            };
-
-            let prs: Vec<RR<Peer>> = self.roost.iter()
-                .map(|r| r.clone())
-                .collect();
-
-            for pr in prs {
-                let mut p = pr.borrow_mut();
-                work_done |= p.pump(&pr, &mut self.cmds);
+        match listener.accept() {
+            Ok((stream, address)) => {
+                stream.set_nonblocking(true).unwrap();
+                self.roost.add(Peer::new(address, stream));
+                work_done = true;
             }
-
-            while let Some(cmd) = self.cmds.pop_front() {
-                writeln!(log, "\t\t\t{:?}", cmd).unwrap();
-                work_done |= self.handle(cmd);
-            }
-
-            let cleanup_due = true;
-            if cleanup_due {
-                //todo, should clean every 100 loops or similar
-                //any closed peers in roost: get rid
-                self.roost.clean();
-            }
-
-            if !work_done {
-                std::thread::sleep(Duration::from_millis(30));
+            Err(e) if e.kind() == ErrorKind::WouldBlock => {}
+            Err(e) => {
+                panic!("Unexpected connect error {e:?}")
             }
         };
+
+        for pr in self.roost.iter() {
+            let mut p = pr.borrow_mut();
+            work_done |= p.pump(&pr, &mut self.cmds);
+        }
+
+        state = self.tick(state, &now);
+
+        while let Some(cmd) = self.cmds.pop_front() {
+            writeln!(log, "\t\t\t{:?} {:?}", state, cmd).unwrap();
+            state = self.handle(state, cmd, &now);
+            work_done = true;
+        }
+
+        if now.duration_since(self.last_cleanup) > Duration::from_secs(10) {
+            self.roost.clean(); //TODO prune the roost of old peers
+            self.last_cleanup = now;
+        }
+
+        (state, work_done)
     }
 
-    fn handle(&mut self, cmd: Cmd) -> bool {
-        match cmd {
-            Cmd::Perch(tag, pr) => {
-                self.roost.perch(tag, pr);
-                true
+    fn tick(&mut self, state: State, now: &Instant) -> State {
+        match state {
+            State::Moving(when, step) if now.duration_since(when) > Duration::from_millis(800) => {
+                while let Some(popped) = self.stack.pop() {
+                    self.history.push(popped);
+                }
+
+                self.history.push(step);
+                
+                State::AtRest
             }
-            Cmd::Stepped(step) => {
-                self.steps.push(step);
-                true
-            }
-            Cmd::Reverse => {
-                for step in self.steps.pop() {
+            s => s
+        }
+    }
+
+    fn handle(&mut self, state: State, cmd: Cmd, now: &Instant) -> State {
+        match (state, cmd) {
+
+            (State::AtRest, Cmd::Hop) => {
+                if let Some(step) = self.history.pop() {
                     for rc in self.roost.find_perch(&step.tag) {
                         let mut p = rc.borrow_mut();
                         p.goto(&step.from);
                     }
+
+                    State::Moving(*now, step.flip())
                 }
-                true
+                else { State::AtRest }
             }
-            Cmd::Hop => {
-                if let Some(step) = self.steps.pop().map(|s| s.flip()) {
+
+            (State::Moving(_, prev_step), Cmd::Hop) => {
+                if let Some(step) = self.history.pop() {
                     for rc in self.roost.find_perch(&step.tag) {
                         let mut p = rc.borrow_mut();
-                        p.goto(&step.to);
+                        p.goto(&step.from);
                     }
 
-                    self.steps.push(step);
+                    self.stack.push(prev_step);
+                    State::Moving(*now, step.flip())
                 }
-                true
+
+                else { State::Moving(*now, prev_step) }
             }
-            Cmd::Clear => {
-                self.steps.clear();
-                true
+            
+            (s, Cmd::Perch(tag, pr)) => {
+                self.roost.perch(tag, pr);
+                s
+            }
+            (s, Cmd::Stepped(step)) => {
+                self.history.push(step);
+                s
+            }
+            (s, Cmd::Clear) => {
+                self.history.clear();
+                s
             }
         }
     }

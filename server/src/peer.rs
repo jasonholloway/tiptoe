@@ -77,9 +77,6 @@ impl PeerState {
                 Some(Cmd::Stepped(Step { tag: self.tag.to_string(), from, to }))
             }
 
-            (_, Msg::Reverse) => {
-                Some(Cmd::Reverse)
-            }
             (_, Msg::Hop) => {
                 Some(Cmd::Hop)
             }

@@ -9,10 +9,26 @@
 *** cope with server outage
 ** firefox
 *** cope with server outage
+*** very high CPU!!!!
 ** server
 *** hoppity hop into the past
 ** tmux
 *** todo
+
+
+
+* ideas
+** when skipping backwards, don't revisit windows we've already hopped through. Iron out wibbly crinkles. Will allow bashing the back button to find a recent thing.
+
+
+
+
+
+
+So we have this concept of a Prance
+a prance is a movement
+we're either in a prance or we're not
+knowing whether we're still in a prance requires timestamps
 
 
 
