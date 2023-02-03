@@ -1,22 +1,23 @@
-use std::{rc::Rc, cell::RefCell, collections::HashMap, fmt::Debug};
+use std::{rc::Rc, cell::{RefCell, Cell}, collections::HashMap, fmt::Debug};
 
 use crate::common::*;
 
-pub struct Roost<H> {
-		peers: Vec<RR<H>>,
+pub struct Roost<M, H> {
+		peers: Vec<(Cell<M>, RR<H>)>,
     perches: HashMap<String, RR<H>>,
 }
 
-impl<H: Debug> Roost<H> {
-		pub fn new() -> Roost<H> {
+impl<M: Debug, H: Debug> Roost<M, H> {
+		pub fn new() -> Roost<M, H> {
 				Roost {
 						peers: Vec::new(),
             perches: HashMap::new()
 				}
 		}
 
-		pub fn add(&mut self, peer: H) -> () {
-				self.peers.push(Rc::new(RefCell::new(peer)))
+		pub fn add(&mut self, peer: (M, H)) -> () {
+        let (m, h) = peer;
+				self.peers.push((Cell::new(m), Rc::new(RefCell::new(h))));
 		}
 
     pub fn find_perch(&self, tag: &Tag) -> Option<RR<H>> {
@@ -28,7 +29,7 @@ impl<H: Debug> Roost<H> {
         self.perches.insert(tag.to_string(), peer.clone());
     }
 
-		pub fn iter(&self) -> impl Iterator<Item = &RR<H>> {
+		pub fn iter(&self) -> impl Iterator<Item = &(Cell<M>, RR<H>)> {
         self.peers.iter()
 		}
 
@@ -38,10 +39,10 @@ impl<H: Debug> Roost<H> {
     }
 }
 
-impl<H: Debug> Debug for Roost<H> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let r: Vec<RR<H>> = self.peers.iter().map(|r| r.clone()).collect();
-        write!(f, "{:?}", r)
-    }
-}
+// impl<M: Debug, H: Debug> Debug for Roost<M, H> {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         let r: Vec<&(Cell<M>, RR<H>)> = self.peers.iter().map(|r| r.clone()).collect();
+//         write!(f, "{:?}", &r)
+//     }
+// }
 

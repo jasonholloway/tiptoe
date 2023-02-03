@@ -16,6 +16,7 @@ pub enum Msg {
 
 #[derive(Debug)]
 pub enum Cmd {
+    Connect(Peer),
     Perch(PeerTag, RR<Peer>),
     Stepped(Step),
     Hop,

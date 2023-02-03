@@ -4,6 +4,7 @@ mod peer;
 mod roost;
 mod visits;
 mod server;
+mod lossy_stack;
 
 use server::{Server, State};
 use std::{net::{TcpListener, TcpStream}, io::Write, time::{Duration, Instant}, thread::sleep};
@@ -18,12 +19,13 @@ fn main() {
     writeln!(log, "\t\t\tStart").unwrap();
 
     let mut server = Server::new(Instant::now());
-    let mut state = State::AtRest;
+    let mut state = State::Start;
 
     loop {
-        let result = server.pump(state, &mut listener, Instant::now(), &mut log);
-        state = result.0;
-        let work_done = result.1;
+        let now = Instant::now();
+
+        let (new_state, work_done) = server.pump(state, &mut listener, now, &mut log);
+        state = new_state;
 
         if !work_done {
             sleep(delay);

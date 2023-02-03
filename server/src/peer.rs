@@ -8,14 +8,23 @@ use self::{input::{PeerInput, ReadResult}, output::PeerOutput};
 mod input;
 mod output;
 
+#[derive(Debug, PartialEq)]
+pub enum PeerMode {
+    Start,
+    First,
+    Active,
+    Closed
+}
+
+impl Default for PeerMode {
+    fn default() -> Self {
+        PeerMode::Closed
+    }
+}
+
 pub struct Peer {
     pub input: PeerInput,
     pub output: PeerOutput,
-    pub state: PeerState,
-}
-
-pub struct PeerState {
-    mode: PeerMode,
     pub tag: String,
     addr: SocketAddr
 }
@@ -26,30 +35,25 @@ impl Peer {
         Peer {
             input: PeerInput::new(stream),
             output: PeerOutput::new(stream2),
-            state: PeerState {
-                mode: PeerMode::Start,
-                tag: String::new(),
-                addr
-            },
+            tag: String::new(),
+            addr
         }
     }
 
-    pub fn pump(&mut self, pr: &RR<Peer>, cmds: &mut VecDeque<Cmd>) -> bool {
-        match self.state.mode {
-            PeerMode::Closed => false,
+    pub fn pump(&mut self, mode: PeerMode, pr: &RR<Peer>, cmds: &mut VecDeque<Cmd>) -> (PeerMode, bool) {
+        match mode {
+            PeerMode::Closed => (mode, false),
             _ => {
                 match self.input.read() {
-                    ReadResult::Yield(m) => {
-                        if let Some(m2) = self.state.handle(pr, m) {
-                            cmds.push_back(m2);
-                        }
+                    ReadResult::Yield(m) => (
+                        self.handle(mode, pr, m, cmds),
                         true
-                    },
-                    ReadResult::Continue => false,
-                    ReadResult::Stop => {
-                        self.state.mode = PeerMode::Closed;
+                    ),
+                    ReadResult::Continue => (mode, false),
+                    ReadResult::Stop => (
+                        PeerMode::Closed,
                         true
-                    }
+                    )
                 }
             }
         }
@@ -65,40 +69,44 @@ impl Peer {
     }
 }
 
-impl PeerState {
-    pub fn handle(&mut self, rc: &RR<Peer>, msg: Msg) -> Option<Cmd> {
-        match (&self.mode, msg) {
+impl Peer {
+    pub fn handle(&mut self, mode: PeerMode, rc: &RR<Peer>, msg: Msg, cmds: &mut VecDeque<Cmd>) -> PeerMode {
+        match (mode, msg) {
             (PeerMode::Start, Msg::Hello(new_tag)) => {
                 self.tag = new_tag.to_string();
-                self.mode = PeerMode::Active;
-                Some(Cmd::Perch(new_tag, rc.clone()))
-            }
-            (PeerMode::Active, Msg::Stepped(from, to)) => {
-                Some(Cmd::Stepped(Step { tag: self.tag.to_string(), from, to }))
+                cmds.push_back(Cmd::Perch(new_tag, rc.clone()));
+                PeerMode::First
             }
 
-            (_, Msg::Hop) => {
-                Some(Cmd::Hop)
-            }
-            (_, Msg::Clear) => {
-                Some(Cmd::Clear)
+            (PeerMode::First, Msg::Stepped(from, to)) => {
+                cmds.push_back(Cmd::Stepped(Step { tag: self.tag.to_string(), rf: from }));
+                cmds.push_back(Cmd::Stepped(Step { tag: self.tag.to_string(), rf: to }));
+                PeerMode::Active
             }
 
-            _ => None
+
+            (PeerMode::Active, Msg::Stepped(_, to)) => {
+                cmds.push_back(Cmd::Stepped(Step { tag: self.tag.to_string(), rf: to }));
+                PeerMode::Active
+            }
+
+            (s, Msg::Hop) => {
+                cmds.push_back(Cmd::Hop);
+                s
+            }
+            (s, Msg::Clear) => {
+                cmds.push_back(Cmd::Clear);
+                s
+            }
+
+            (s, _) => s
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub enum PeerMode {
-    Start,
-    Active,
-    Closed
-}
-
 impl Debug for Peer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.state.addr.fmt(f)
+        self.addr.fmt(f)
     }
 }
 
