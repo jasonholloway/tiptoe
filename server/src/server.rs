@@ -1,6 +1,6 @@
 use std::{net::TcpListener, io::ErrorKind, time::{Duration, Instant}, collections::VecDeque};
 
-use crate::{roost::Roost, visits::Step, peer::{Peer, PeerMode}, msg::Cmd, lossy_stack::LossyStack};
+use crate::{roost::Roost, peer::{Peer, PeerMode}, lossy_stack::LossyStack, common::{Step, Cmd}};
 
 pub struct Server {
     cmds: VecDeque<Cmd>,
@@ -97,6 +97,12 @@ impl Server {
         }
     }
 
+    // so, on a hop, we cycle through our group
+    // on a dredge the hop group is extended (the stack is added to)
+    // initially the hop group is two
+    // but through dredge we can go further back
+    //
+
     fn handle(&mut self, state: State, cmd: Cmd, now: &Instant) -> State {
         match (state, cmd) {
             (s, Cmd::Connect(peer)) => {
@@ -107,24 +113,26 @@ impl Server {
             (State::Start, Cmd::Stepped(step)) => {
                 State::AtRest(step)
             }
-            (State::AtRest(curr), Cmd::Stepped(step)) => {
-                self.history.push(curr);
+            (State::AtRest(prev), Cmd::Stepped(step)) => {
+                self.history.push(prev);
                 State::AtRest(step)
             }
             (State::Moving(_, mut stack), Cmd::Stepped(step)) => {
-                stack.push_back(step);
-                State::Moving(*now, stack)
+                while let Some(popped) = stack.pop_back() {
+                    self.history.push(popped);
+                }
+                State::AtRest(step)
             }
 
             (s@State::Start, Cmd::Hop) => {
                 s
             }
-            (State::AtRest(curr), Cmd::Hop) => {
+            (State::AtRest(prev), Cmd::Hop) => {
                 if let Some(step) = self.history.pop() {
                     self.goto(&step);
-                    State::Moving(*now, VecDeque::from([curr,step]))
+                    State::Moving(*now, VecDeque::from([prev,step]))
                 }
-                else { State::AtRest(curr) }
+                else { State::AtRest(prev) }
             }
             (State::Moving(_, mut stack), Cmd::Hop) => {
                 if let Some(step) = self.history.pop() {

@@ -1,8 +1,6 @@
 mod common;
-mod msg;
 mod peer;
 mod roost;
-mod visits;
 mod server;
 mod lossy_stack;
 

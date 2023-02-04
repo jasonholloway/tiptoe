@@ -1,6 +1,7 @@
-use crate::{msg::{Msg, Cmd}, common::RR, visits::Step};
+use crate::common::{Cmd,RR,Step};
 
 use core::fmt::Debug;
+use std::io::Write;
 use std::{net::{TcpStream, SocketAddr}, collections::VecDeque};
 
 use self::{input::{PeerInput, ReadResult}, output::PeerOutput};
@@ -45,8 +46,8 @@ impl Peer {
             PeerMode::Closed => (mode, false),
             _ => {
                 match self.input.read() {
-                    ReadResult::Yield(m) => (
-                        self.handle(mode, pr, m, cmds),
+                    ReadResult::Yield(line) => (
+                        self.handle(mode, pr, line, cmds),
                         true
                     ),
                     ReadResult::Continue => (mode, false),
@@ -60,47 +61,48 @@ impl Peer {
     }
 
     pub fn goto(&mut self, rf: &str) -> () {
-        self.log("OUT", format!("goto {}", &rf));
-        self.output.write(Msg::Goto(rf.to_string())).unwrap();
-    }
-
-    fn log<O: Debug>(&self, typ: &str, o: O) {
-        // println!("{:?}@{} {} {:?}", self.state.addr, self.state.tag, typ, o)
+        writeln!(self.output, "goto {}", rf).unwrap();
+        self.output.flush().unwrap();
     }
 }
 
 impl Peer {
-    pub fn handle(&mut self, mode: PeerMode, rc: &RR<Peer>, msg: Msg, cmds: &mut VecDeque<Cmd>) -> PeerMode {
-        match (mode, msg) {
-            (PeerMode::Start, Msg::Hello(new_tag)) => {
+    pub fn handle(&mut self, mode: PeerMode, rc: &RR<Peer>, line: String, cmds: &mut VecDeque<Cmd>) -> PeerMode {
+        match (mode, Self::digest(&line).as_slice()) {
+
+            (PeerMode::Start, &["hello", new_tag]) => {
                 self.tag = new_tag.to_string();
-                cmds.push_back(Cmd::Perch(new_tag, rc.clone()));
+                cmds.push_back(Cmd::Perch(new_tag.to_string(), rc.clone()));
                 PeerMode::First
             }
 
-            (PeerMode::First, Msg::Stepped(from, to)) => {
-                cmds.push_back(Cmd::Stepped(Step { tag: self.tag.to_string(), rf: from }));
-                cmds.push_back(Cmd::Stepped(Step { tag: self.tag.to_string(), rf: to }));
+            (PeerMode::First, &["stepped", from, to]) => {
+                cmds.push_back(Cmd::Stepped(Step { tag: self.tag.to_string(), rf: from.to_string() }));
+                cmds.push_back(Cmd::Stepped(Step { tag: self.tag.to_string(), rf: to.to_string() }));
                 PeerMode::Active
             }
 
 
-            (PeerMode::Active, Msg::Stepped(_, to)) => {
-                cmds.push_back(Cmd::Stepped(Step { tag: self.tag.to_string(), rf: to }));
+            (PeerMode::Active, &["stepped", _, to]) => {
+                cmds.push_back(Cmd::Stepped(Step { tag: self.tag.to_string(), rf: to.to_string() }));
                 PeerMode::Active
             }
 
-            (s, Msg::Hop) => {
+            (s, &["hop"]) => {
                 cmds.push_back(Cmd::Hop);
                 s
             }
-            (s, Msg::Clear) => {
+            (s, &["clear"]) => {
                 cmds.push_back(Cmd::Clear);
                 s
             }
 
             (s, _) => s
         }
+    }
+
+    fn digest(line: &String) -> Vec<&str> {
+        line.trim().split_whitespace().collect::<Vec<_>>()
     }
 }
 
