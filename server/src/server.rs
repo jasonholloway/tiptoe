@@ -12,6 +12,7 @@ pub struct Server<S> {
     last_cleanup: Instant
 }
 
+#[derive(PartialEq)]
 pub enum State {
     Starting,
     Resting(Step),
@@ -40,7 +41,7 @@ impl<S: Talk> Server<S> {
             let mut p = pr.borrow_mut();
             let m = pmr.take();
             
-            let (m2, w) = p.pump(m, pr, &mut self.cmds);
+            let (m2, w) = p.pump(m, pr, &mut self.cmds, log);
 
             pmr.set(m2);
             work_done |= w;
@@ -200,12 +201,11 @@ impl<S: Talk> Server<S> {
     }
 }
 
-
 impl std::fmt::Debug for State {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Starting => f.write_str("Start"),
-            Resting(_) => f.write_str("AtRest"),
+            Starting => f.write_str("Starting"),
+            Resting(_) => f.write_str("Resting"),
             Reaching(_,_) => f.write_str("Reaching"),
             Juggling(_,_) => f.write_str("Juggling"),
         }
@@ -213,46 +213,79 @@ impl std::fmt::Debug for State {
 }
 
 
-
-
-
-
-
-
 #[cfg(test)]
 mod tests {
+    use std::{sync::{Arc, Mutex}, io::Write};
+
+    use crate::common::ReadResult;
+
     use super::*;
 
     #[test]
     fn tiptoe() {
         let now = Instant::now();
-        // let _server: Server<TestStream> = Server::new(now);
+        let mut server: Server<TestStream> = Server::new(now);
+        let mut log = std::io::stderr();
 
-        // server receives stream of peers and cmds
-        // to test, a peer is announced into the system
-        // and fomr there appends commands
+        let mut t = TestStream::new();
+        let p = Peer::new("p1", t.clone());
 
-        // server.pump(State::Starting, TcpListener::bind().unwrap(), now, nil); // 
+        let ps1 = State::Starting;
 
-        let r = dbg!("123");
+        server.enqueue(Cmd::Connect(p));
+        t.enqueue("hello moo");
+        let (ps2, _) = server.pump(ps1, now, &mut log);
+        let (ps3, _) = server.pump(ps2, now, &mut log);
+        let (ps4, _) = server.pump(ps3, now, &mut log);
 
-        println!("{}", r);
+        t.enqueue("stepped a.b.c");
+        let (ps5, _) = server.pump(ps4, now, &mut log);
+
+        log.flush().unwrap();
+
+        assert_eq!(ps5, State::Resting(Step::new("moo", "a.b.c")));
     }
 
     struct TestStream {
-        input: VecDeque<String>,
-        output: VecDeque<String>
+        input: Arc<Mutex<VecDeque<String>>>,
+        output: Arc<Mutex<VecDeque<String>>>
+    }
+
+    impl TestStream {
+        pub fn new() -> TestStream {
+            TestStream {
+                input: Arc::new(Mutex::new(VecDeque::new())),
+                output: Arc::new(Mutex::new(VecDeque::new()))
+            }
+        }
+
+        pub fn clone(&self) -> TestStream {
+            TestStream {
+                input: self.input.clone(),
+                output: self.output.clone()
+            }
+        }
+
+        pub fn enqueue(&mut self, line: &str) -> () {
+            self.input.lock().unwrap().push_back(line.to_string());
+        }
     }
 
     impl Talk for TestStream {
         fn read(&mut self) -> crate::common::ReadResult<String> {
-            todo!()
+            if let Some(popped) = self.input.lock().unwrap().pop_front() {
+                ReadResult::Yield(popped)
+            }
+            else {
+                ReadResult::Continue
+            }
         }
     }
 
     impl std::fmt::Write for TestStream {
-        fn write_str(&mut self, _s: &str) -> std::fmt::Result {
-            todo!()
+        fn write_str(&mut self, s: &str) -> std::fmt::Result {
+            self.output.lock().unwrap().push_back(s.to_string());
+            Ok(())
         }
     }
 

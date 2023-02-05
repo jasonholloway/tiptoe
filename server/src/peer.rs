@@ -1,7 +1,7 @@
 use crate::common::{Cmd,ReadResult,RR,Step,Talk};
 
 use core::fmt::Debug;
-use std::{net::SocketAddr, collections::VecDeque};
+use std::collections::VecDeque;
 
 #[derive(Debug, PartialEq)]
 pub enum PeerMode {
@@ -20,27 +20,30 @@ impl Default for PeerMode {
 pub struct Peer<S> {
     pub talk: S,
     pub tag: String,
-    addr: SocketAddr
+    id: String
 }
 
 impl<S: Talk> Peer<S> {
-    pub fn new(addr: SocketAddr, talk: S) -> Peer<S> {
+    pub fn new(id: &str, talk: S) -> Peer<S> {
         Peer {
             talk,
             tag: String::new(),
-            addr
+            id: id.to_string()
         }
     }
 
-    pub fn pump(&mut self, mode: PeerMode, pr: &RR<Peer<S>>, cmds: &mut VecDeque<Cmd<S>>) -> (PeerMode, bool) {
+    pub fn pump<W: std::io::Write>(&mut self, mode: PeerMode, pr: &RR<Peer<S>>, cmds: &mut VecDeque<Cmd<S>>, log: &mut W) -> (PeerMode, bool) {
         match mode {
             PeerMode::Closed => (mode, false),
             _ => {
                 match self.talk.read() {
-                    ReadResult::Yield(line) => (
-                        self.handle(mode, pr, line, cmds),
-                        true
-                    ),
+                    ReadResult::Yield(line) => {
+                        writeln!(log, "Read {}", &line).unwrap();
+                        (
+                            self.handle(mode, pr, line, cmds),
+                            true
+                        )
+                    },
                     ReadResult::Continue => (mode, false),
                     ReadResult::Stop => (
                         PeerMode::Closed,
@@ -102,7 +105,7 @@ impl<S> Peer<S> {
 
 impl<S> Debug for Peer<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.addr.fmt(f)
+        self.id.fmt(f)
     }
 }
 

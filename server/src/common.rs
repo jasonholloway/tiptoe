@@ -19,10 +19,19 @@ pub enum Cmd<S> {
     Clear
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Step {
     pub tag: PeerTag,
 		pub rf: Ref,
+}
+
+impl Step {
+    pub fn new(tag: &str, rf: &str) -> Step {
+        Step {
+            tag: tag.to_string(),
+            rf: rf.to_string()
+        }
+    }
 }
 
 impl<S> std::fmt::Debug for Cmd<S> {

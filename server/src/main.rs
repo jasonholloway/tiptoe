@@ -27,7 +27,7 @@ fn main() {
         let mut work_done = match listener.accept() {
             Ok((stream, address)) => {
                 stream.set_nonblocking(true).unwrap();
-                server.enqueue(Cmd::Connect(Peer::new(address, TcpTalker::new(stream))));
+                server.enqueue(Cmd::Connect(Peer::new(&address.to_string(), TcpTalker::new(stream))));
                 true
             }
             Err(e) if e.kind() == ErrorKind::WouldBlock => false,
