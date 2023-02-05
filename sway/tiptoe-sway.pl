@@ -142,10 +142,10 @@ while (1) {
         if ($swayInType == 0x80000005) {
             if ($swayInPayload =~ /"change":\W*"run"/) {
                 if ($swayInPayload =~ /"symbols":\W*\[\W*"grave"\W*\]/) {
-                    tiptoeWrite("reverse");
+                    tiptoeWrite("reach");
                 }
                 if ($swayInPayload =~ /"symbols":\W*\[\W*"Tab"\W*\]/) {
-                    tiptoeWrite("hop");
+                    tiptoeWrite("juggle");
                 }
             }
         }

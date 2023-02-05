@@ -1,33 +1,26 @@
-use std::{net::TcpListener, io::ErrorKind, time::{Duration, Instant}, collections::VecDeque};
+use std::{time::{Duration, Instant}, collections::VecDeque};
 
-use crate::{roost::Roost, peer::{Peer, PeerMode}, lossy_stack::LossyStack, common::{Step, Cmd}};
+use crate::{roost::Roost, peer::{Peer, PeerMode}, lossy_stack::LossyStack, common::{Step, Cmd, Talk}};
 
-pub struct Server {
-    cmds: VecDeque<Cmd>,
-    roost: Roost<PeerMode, Peer>,
+use State::*;
+use Cmd::*;
+
+pub struct Server<S> {
+    cmds: VecDeque<Cmd<S>>,
+    roost: Roost<PeerMode, Peer<S>>,
     history: LossyStack<Step>,
     last_cleanup: Instant
 }
 
 pub enum State {
-    Start,
-    AtRest(Step),
-    Moving(Instant, VecDeque<Step>)
+    Starting,
+    Resting(Step),
+    Reaching(Instant, VecDeque<Step>),
+    Juggling(Instant, VecDeque<Step>)
 }
 
-impl std::fmt::Debug for State {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            State::Start => f.write_str("Start"),
-            State::AtRest(_) => f.write_str("AtRest"),
-            State::Moving(_,_) => f.write_str("Moving"),
-        }
-    }
-}
-
-
-impl Server {
-    pub fn new(now: Instant) -> Server {
+impl<S: Talk> Server<S> {
+    pub fn new(now: Instant) -> Server<S> {
         Server {
             roost: Roost::new(),
             history: LossyStack::new(128),
@@ -36,10 +29,12 @@ impl Server {
         }
     }
 
-    pub fn pump<W: std::io::Write>(&mut self, mut state: State, listener: &mut TcpListener, now: Instant, log: &mut W) -> (State, bool) {
-        let mut work_done: bool = false;
+    pub fn enqueue(&mut self, cmd: Cmd<S>) -> () {
+        self.cmds.push_back(cmd);
+    }
 
-        work_done |= self.accept_peers(listener);
+    pub fn pump<W: std::io::Write>(&mut self, mut state: State, now: Instant, log: &mut W) -> (State, bool) {
+        let mut work_done: bool = false;
 
         for (pmr, pr) in self.roost.iter() {
             let mut p = pr.borrow_mut();
@@ -67,23 +62,21 @@ impl Server {
         (state, work_done)
     }
 
-    fn accept_peers(&mut self, listener: &mut TcpListener) -> bool {
-        match listener.accept() {
-            Ok((stream, address)) => {
-                stream.set_nonblocking(true).unwrap();
-                self.cmds.push_back(Cmd::Connect(Peer::new(address, stream)));
-                true
-            }
-            Err(e) if e.kind() == ErrorKind::WouldBlock => false,
-            Err(e) => {
-                panic!("Unexpected connect error {e:?}")
-            }
-        }
-    }
-
     fn tick(&mut self, state: State, now: &Instant) -> State {
         match state {
-            State::Moving(when, mut stack) if now.duration_since(when) > Duration::from_millis(700) => {
+            Juggling(when, mut steps) if now.duration_since(when) > Duration::from_millis(700) => {
+                if let Some(curr) = steps.pop_front() {
+                    while let Some(popped) = steps.pop_back() {
+                        self.history.push(popped);
+                    }
+
+                    Resting(curr)
+                }
+                else {
+                    Starting
+                }
+            }
+            Reaching(when, mut stack) if now.duration_since(when) > Duration::from_millis(700) => {
                 let curr = stack.pop_back()
                     .expect("stack must always have at least one member");
                 
@@ -91,7 +84,7 @@ impl Server {
                     self.history.push(popped);
                 }
                 
-                State::AtRest(curr)
+                Resting(curr)
             }
             s => s
         }
@@ -103,51 +96,96 @@ impl Server {
     // but through dredge we can go further back
     //
 
-    fn handle(&mut self, state: State, cmd: Cmd, now: &Instant) -> State {
+    fn handle(&mut self, state: State, cmd: Cmd<S>, now: &Instant) -> State {
         match (state, cmd) {
-            (s, Cmd::Connect(peer)) => {
+            (s, Connect(peer)) => {
                 self.roost.add((PeerMode::Start, peer));
                 s
             }
 
-            (State::Start, Cmd::Stepped(step)) => {
-                State::AtRest(step)
+            (Starting, Stepped(step)) => {
+                Resting(step)
             }
-            (State::AtRest(prev), Cmd::Stepped(step)) => {
+            (Resting(prev), Stepped(step)) => {
                 self.history.push(prev);
-                State::AtRest(step)
+                Resting(step)
             }
-            (State::Moving(_, mut stack), Cmd::Stepped(step)) => {
+            (Juggling(_, mut steps), Stepped(step)) => {
+                while let Some(popped) = steps.pop_back() {
+                    self.history.push(popped);
+                }
+                Resting(step)
+            }
+            (Reaching(_, mut stack), Stepped(step)) => {
                 while let Some(popped) = stack.pop_back() {
                     self.history.push(popped);
                 }
-                State::AtRest(step)
+                Resting(step)
             }
 
-            (s@State::Start, Cmd::Hop) => {
+
+
+            (s@Starting, Juggle) => {
                 s
             }
-            (State::AtRest(prev), Cmd::Hop) => {
+            (Resting(prev), Juggle) => {
                 if let Some(step) = self.history.pop() {
                     self.goto(&step);
-                    State::Moving(*now, VecDeque::from([prev,step]))
+                    Juggling(*now, VecDeque::from([step,prev]))
                 }
-                else { State::AtRest(prev) }
+                else { Resting(prev) }
             }
-            (State::Moving(_, mut stack), Cmd::Hop) => {
+            (Juggling(_, mut steps), Juggle) => {
+                if let Some(prev) = steps.pop_front() {
+                    steps.push_back(prev);
+                }
+
+                if let Some(curr) = steps.front() {
+                    self.goto(&curr);
+                }
+                
+                Juggling(*now, steps)
+            }
+            (s@Reaching(_,_), Juggle) => {
+                s
+            }
+            
+
+            (s@Starting, Reach) => {
+                s
+            }
+            (Resting(prev), Reach) => {
+                if let Some(step) = self.history.pop() {
+                    self.goto(&step);
+                    Reaching(*now, VecDeque::from([step,prev]))
+                }
+                else { Resting(prev) }
+            }
+            (Reaching(_, mut stack), Reach) => {
                 if let Some(step) = self.history.pop() {
                     self.goto(&step);
                     stack.push_back(step);
-                    State::Moving(*now, stack)
+                    Reaching(*now, stack)
                 }
-                else { State::Moving(*now, stack) }
+                else { Reaching(*now, stack) }
+            }
+            (Juggling(_, mut steps), Reach) => {
+                if let Some(step) = self.history.pop() {
+                    self.goto(&step);
+                    //jumble occurs here I think todo
+                    steps.push_back(step);
+                    Reaching(*now, steps)
+                }
+                else {
+                    Reaching(*now, steps)
+                }
             }
             
-            (s, Cmd::Perch(tag, pr)) => {
+            (s, Perch(tag, pr)) => {
                 self.roost.perch(tag, pr);
                 s
             }
-            (s, Cmd::Clear) => {
+            (s, Clear) => {
                 self.history.clear();
                 s
             }
@@ -160,4 +198,62 @@ impl Server {
             p.goto(&step.rf);
         }
     }
+}
+
+
+impl std::fmt::Debug for State {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Starting => f.write_str("Start"),
+            Resting(_) => f.write_str("AtRest"),
+            Reaching(_,_) => f.write_str("Reaching"),
+            Juggling(_,_) => f.write_str("Juggling"),
+        }
+    }
+}
+
+
+
+
+
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tiptoe() {
+        let now = Instant::now();
+        // let _server: Server<TestStream> = Server::new(now);
+
+        // server receives stream of peers and cmds
+        // to test, a peer is announced into the system
+        // and fomr there appends commands
+
+        // server.pump(State::Starting, TcpListener::bind().unwrap(), now, nil); // 
+
+        let r = dbg!("123");
+
+        println!("{}", r);
+    }
+
+    struct TestStream {
+        input: VecDeque<String>,
+        output: VecDeque<String>
+    }
+
+    impl Talk for TestStream {
+        fn read(&mut self) -> crate::common::ReadResult<String> {
+            todo!()
+        }
+    }
+
+    impl std::fmt::Write for TestStream {
+        fn write_str(&mut self, _s: &str) -> std::fmt::Result {
+            todo!()
+        }
+    }
+
 }

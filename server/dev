@@ -1,0 +1,21 @@
+#!/bin/bash
+
+watch="$1"
+cmd="$2"
+
+inp=$(mktemp -u)
+trap 'rm -f $inp' EXIT
+
+clear
+
+{
+		(eval "$cmd") &
+
+		while read -r _; do
+				kill %eval
+				clear
+				(eval "$cmd") &
+
+		done < <(inotifywait -me CLOSE_WRITE -r $watch)
+}
+

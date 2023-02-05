@@ -10,12 +10,12 @@ pub type PeerTag = String;
 
 pub type Ref = String;
 
-#[derive(Debug)]
-pub enum Cmd {
-    Connect(Peer),
-    Perch(PeerTag, RR<Peer>),
+pub enum Cmd<S> {
+    Connect(Peer<S>),
+    Perch(PeerTag, RR<Peer<S>>),
     Stepped(Step),
-    Hop,
+    Reach,
+    Juggle,
     Clear
 }
 
@@ -25,3 +25,26 @@ pub struct Step {
 		pub rf: Ref,
 }
 
+impl<S> std::fmt::Debug for Cmd<S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+          Cmd::Connect(_) => write!(f, "Connect"),
+          Cmd::Perch(tag, _) => write!(f, "Perch  {}", tag),
+          Cmd::Stepped(step) => write!(f, "Stepped {:?}", step),
+          Cmd::Reach => write!(f, "Reach"),
+          Cmd::Juggle => write!(f, "Juggle"),
+          Cmd::Clear => write!(f, "Clear")
+        }
+    }
+}
+
+
+pub trait Talk where Self: std::fmt::Write {
+    fn read(&mut self) -> ReadResult<String>;
+}
+
+pub enum ReadResult<R> {
+    Yield(R),
+    Continue,
+    Stop
+}

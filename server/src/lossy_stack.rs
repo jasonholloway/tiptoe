@@ -25,9 +25,9 @@ impl<I: std::fmt::Debug> LossyStack<I> {
 				self.deque.pop_front()
 		}
 
-		pub fn peek(&self) -> Option<&I> {
-				self.deque.front()
-		}
+		// pub fn peek(&self) -> Option<&I> {
+		// 		self.deque.front()
+		// }
 
 		pub fn clear(&mut self) -> () {
 				self.deque.clear();

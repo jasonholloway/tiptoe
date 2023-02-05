@@ -1,13 +1,7 @@
-use crate::common::{Cmd,RR,Step};
+use crate::common::{Cmd,ReadResult,RR,Step,Talk};
 
 use core::fmt::Debug;
-use std::io::Write;
-use std::{net::{TcpStream, SocketAddr}, collections::VecDeque};
-
-use self::{input::{PeerInput, ReadResult}, output::PeerOutput};
-
-mod input;
-mod output;
+use std::{net::SocketAddr, collections::VecDeque};
 
 #[derive(Debug, PartialEq)]
 pub enum PeerMode {
@@ -23,29 +17,26 @@ impl Default for PeerMode {
     }
 }
 
-pub struct Peer {
-    pub input: PeerInput,
-    pub output: PeerOutput,
+pub struct Peer<S> {
+    pub talk: S,
     pub tag: String,
     addr: SocketAddr
 }
 
-impl Peer {
-    pub fn new(addr: SocketAddr, stream: TcpStream) -> Peer {
-        let stream2 = stream.try_clone().unwrap();
+impl<S: Talk> Peer<S> {
+    pub fn new(addr: SocketAddr, talk: S) -> Peer<S> {
         Peer {
-            input: PeerInput::new(stream),
-            output: PeerOutput::new(stream2),
+            talk,
             tag: String::new(),
             addr
         }
     }
 
-    pub fn pump(&mut self, mode: PeerMode, pr: &RR<Peer>, cmds: &mut VecDeque<Cmd>) -> (PeerMode, bool) {
+    pub fn pump(&mut self, mode: PeerMode, pr: &RR<Peer<S>>, cmds: &mut VecDeque<Cmd<S>>) -> (PeerMode, bool) {
         match mode {
             PeerMode::Closed => (mode, false),
             _ => {
-                match self.input.read() {
+                match self.talk.read() {
                     ReadResult::Yield(line) => (
                         self.handle(mode, pr, line, cmds),
                         true
@@ -61,13 +52,12 @@ impl Peer {
     }
 
     pub fn goto(&mut self, rf: &str) -> () {
-        writeln!(self.output, "goto {}", rf).unwrap();
-        self.output.flush().unwrap();
+        writeln!(self.talk, "goto {}", rf).unwrap();
     }
 }
 
-impl Peer {
-    pub fn handle(&mut self, mode: PeerMode, rc: &RR<Peer>, line: String, cmds: &mut VecDeque<Cmd>) -> PeerMode {
+impl<S> Peer<S> {
+    pub fn handle(&mut self, mode: PeerMode, rc: &RR<Peer<S>>, line: String, cmds: &mut VecDeque<Cmd<S>>) -> PeerMode {
         match (mode, Self::digest(&line).as_slice()) {
 
             (PeerMode::Start, &["hello", new_tag]) => {
@@ -88,8 +78,12 @@ impl Peer {
                 PeerMode::Active
             }
 
-            (s, &["hop"]) => {
-                cmds.push_back(Cmd::Hop);
+            (s, &["juggle"]) => {
+                cmds.push_back(Cmd::Juggle);
+                s
+            }
+            (s, &["reach"]) => {
+                cmds.push_back(Cmd::Reach);
                 s
             }
             (s, &["clear"]) => {
@@ -106,7 +100,7 @@ impl Peer {
     }
 }
 
-impl Debug for Peer {
+impl<S> Debug for Peer<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.addr.fmt(f)
     }
