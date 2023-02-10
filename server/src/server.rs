@@ -215,63 +215,195 @@ impl std::fmt::Debug for State {
 
 #[cfg(test)]
 mod tests {
-    use std::{sync::{Arc, Mutex}, io::Write};
+    use std::{sync::{Arc, Mutex}, io::Stderr, cell::Cell};
+    use assert_matches::*;
 
     use crate::common::ReadResult;
 
     use super::*;
 
     #[test]
-    fn tiptoe() {
-        let now = Instant::now();
-        let mut server: Server<TestStream> = Server::new(now);
-        let mut log = std::io::stderr();
+    fn hello_stepped() {
+        let mut tt = TestRunner::new();
 
-        let mut t = TestStream::new();
-        let p = Peer::new("p1", t.clone());
+        let mut p = tt.peer("p1");
+        p.say("hello moo");
+        tt.step();
+        tt.step();
 
-        let ps1 = State::Starting;
+        p.say("stepped a b");
+        tt.step();
 
-        server.enqueue(Cmd::Connect(p));
-        t.enqueue("hello moo");
-        let (ps2, _) = server.pump(ps1, now, &mut log);
-        let (ps3, _) = server.pump(ps2, now, &mut log);
-        let (ps4, _) = server.pump(ps3, now, &mut log);
-
-        t.enqueue("stepped a.b.c");
-        let (ps5, _) = server.pump(ps4, now, &mut log);
-
-        log.flush().unwrap();
-
-        assert_eq!(ps5, State::Resting(Step::new("moo", "a.b.c")));
+        assert_eq!(tt.state(), State::Resting(Step::new("moo", "b")));
     }
 
-    struct TestStream {
+    #[test]
+    fn juggle() {
+        let mut tt = TestRunner::new();
+        let mut p1 = tt.peer("p1");
+        let mut p2 = tt.peer("p2");
+
+        p1.say("hello p1");
+        tt.step();
+        tt.step();
+
+        p1.say("stepped a b");
+        tt.step();
+        
+        p1.say("stepped b c");
+        tt.step();
+
+        p2.say("juggle");
+        tt.step();
+
+        assert_matches!(tt.state(), Juggling(_, steps) => {
+            assert_steps_eq(steps, vec!(
+                ("p1", "b"),
+                ("p1", "c")
+            ));
+        });
+    }
+
+    #[test]
+    fn juggle2() {
+        let mut tt = TestRunner::new();
+        let mut p1 = tt.peer("p1");
+        let mut p2 = tt.peer("p2");
+
+        p1.say("hello p1");
+        tt.step();
+        tt.step();
+
+        p1.say("stepped a b");
+        tt.step();
+        
+        p1.say("stepped b c");
+        tt.step();
+
+        p1.say("stepped c d");
+        tt.step();
+
+        p2.say("juggle");
+        tt.step();
+
+        assert_matches!(tt.state(), Juggling(_, steps) => {
+            assert_steps_eq(steps, vec!(
+                ("p1", "c"),
+                ("p1", "d")
+            ));
+        });
+    }
+
+    #[test]
+    fn juggle3() {
+        let mut tt = TestRunner::new();
+        let mut p1 = tt.peer("p1");
+        let mut p2 = tt.peer("p2");
+
+        p1.say("hello p1");
+        tt.step();
+        tt.step();
+
+        p1.say("stepped a b");
+        tt.step();
+        
+        p1.say("stepped b c");
+        tt.step();
+
+        p2.say("juggle");
+        tt.step();
+
+        p1.say("stepped b d");
+        tt.step();
+
+        assert_matches!(tt.state(), Juggling(_, steps) => {
+            assert_steps_eq(steps, vec!(
+                ("p1", "c"),
+                ("p1", "d")
+            ));
+        });
+    }
+
+    pub fn assert_steps_eq<'a, C: IntoIterator<Item=Step>>(steps: C, expected: Vec<(&str,&str)>) -> () {
+        let actual_tups: Vec<(String, String)> = steps.into_iter()
+            .map(|s| (s.tag, s.rf))
+            .collect();
+
+        let expected_tups: Vec<(String, String)> = expected.iter()
+            .map(|(tag,rf)| (tag.to_string(), rf.to_string()))
+            .collect();
+
+        assert_eq!(actual_tups, expected_tups);
+    }
+
+
+    struct TestRunner {
+        now: Instant,
+        server: Server<TestTalk>,
+        state_cell: Cell<Option<State>>,
+        log: Stderr
+    }
+
+    impl TestRunner {
+        pub fn new() -> TestRunner {
+            let now = Instant::now();
+            TestRunner {
+                now,
+                server: Server::new(now),
+                state_cell: Cell::new(Some(Starting)),
+                log: std::io::stderr()
+            }
+        }
+
+        pub fn peer(&mut self, id: &str) -> TestTalk {
+            let p = TestTalk::new();
+            self.say(Cmd::Connect(Peer::new(id, p.clone())));
+            p
+        }
+
+        pub fn state<'a>(&self) -> State {
+            self.state_cell.take().unwrap()
+        }
+
+        pub fn say(&mut self, cmd: Cmd<TestTalk>) -> () {
+            self.server.enqueue(cmd);
+        }
+        
+        pub fn step(&mut self) -> () {
+            self.now = self.now + Duration::from_secs(1);
+            let (s2, _) = self.server.pump(self.state_cell.take().unwrap(), self.now, &mut self.log);
+            self.state_cell.set(Some(s2));
+        }
+    }
+
+    
+
+    struct TestTalk {
         input: Arc<Mutex<VecDeque<String>>>,
         output: Arc<Mutex<VecDeque<String>>>
     }
 
-    impl TestStream {
-        pub fn new() -> TestStream {
-            TestStream {
+    impl TestTalk {
+        pub fn new() -> TestTalk {
+            TestTalk {
                 input: Arc::new(Mutex::new(VecDeque::new())),
                 output: Arc::new(Mutex::new(VecDeque::new()))
             }
         }
 
-        pub fn clone(&self) -> TestStream {
-            TestStream {
+        pub fn clone(&self) -> TestTalk {
+            TestTalk {
                 input: self.input.clone(),
                 output: self.output.clone()
             }
         }
 
-        pub fn enqueue(&mut self, line: &str) -> () {
+        pub fn say(&mut self, line: &str) -> () {
             self.input.lock().unwrap().push_back(line.to_string());
         }
     }
 
-    impl Talk for TestStream {
+    impl Talk for TestTalk {
         fn read(&mut self) -> crate::common::ReadResult<String> {
             if let Some(popped) = self.input.lock().unwrap().pop_front() {
                 ReadResult::Yield(popped)
@@ -282,7 +414,7 @@ mod tests {
         }
     }
 
-    impl std::fmt::Write for TestStream {
+    impl std::fmt::Write for TestTalk {
         fn write_str(&mut self, s: &str) -> std::fmt::Result {
             self.output.lock().unwrap().push_back(s.to_string());
             Ok(())

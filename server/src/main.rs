@@ -9,14 +9,14 @@ use peer::Peer;
 use server::{Server, State};
 use std::{net::{TcpListener, TcpStream}, io::{Write, ErrorKind, BufReader, BufRead}, time::{Duration, Instant}, thread::sleep, str::from_utf8};
 
-fn main() {
+fn main() -> Result<(), std::io::Error> {
     let delay = Duration::from_millis(50);
     
-    let listener = TcpListener::bind("127.0.0.1:17878").unwrap();
-    listener.set_nonblocking(true).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:17878")?;
+    listener.set_nonblocking(true)?;
 
-    let mut log = TcpStream::connect("127.0.0.1:17879").unwrap();
-    writeln!(log, "\t\t\tStart").unwrap();
+    let mut log = TcpStream::connect("127.0.0.1:17879")?;
+    writeln!(log, "\t\t\tStart")?;
 
     let mut server: Server<TcpTalker> = Server::new(Instant::now());
     let mut state = State::Starting;
@@ -26,7 +26,7 @@ fn main() {
 
         let mut work_done = match listener.accept() {
             Ok((stream, address)) => {
-                stream.set_nonblocking(true).unwrap();
+                stream.set_nonblocking(true)?;
                 server.enqueue(Cmd::Connect(Peer::new(&address.to_string(), TcpTalker::new(stream))));
                 true
             }
