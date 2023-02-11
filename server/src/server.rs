@@ -1,6 +1,6 @@
 use std::{time::{Duration, Instant}, collections::VecDeque};
 
-use crate::{roost::Roost, peer::{Peer, PeerMode}, lossy_stack::LossyStack, common::{Step, Cmd, Talk}};
+use crate::{roost::Roost, peer::{Peer, PeerMode}, common::{Step, Cmd, Talk}};
 
 use State::*;
 use Cmd::*;
@@ -8,23 +8,20 @@ use Cmd::*;
 pub struct Server<S> {
     cmds: VecDeque<Cmd<S>>,
     roost: Roost<PeerMode, Peer<S>>,
-    history: LossyStack<Step>,
     last_cleanup: Instant
 }
 
 #[derive(PartialEq)]
 pub enum State {
     Starting,
-    Resting(Step),
-    Reaching(Instant, VecDeque<Step>),
-    Juggling(Instant, VecDeque<Step>)
+    Resting(Vec<Step>),
+    Juggling(Instant, VecDeque<Step>, Vec<Step>)
 }
 
 impl<S: Talk> Server<S> {
     pub fn new(now: Instant) -> Server<S> {
         Server {
             roost: Roost::new(),
-            history: LossyStack::new(128),
             last_cleanup: now,
             cmds: VecDeque::new()
         }
@@ -65,37 +62,14 @@ impl<S: Talk> Server<S> {
 
     fn tick(&mut self, state: State, now: &Instant) -> State {
         match state {
-            Juggling(when, mut steps) if now.duration_since(when) > Duration::from_millis(700) => {
-                if let Some(curr) = steps.pop_front() {
-                    while let Some(popped) = steps.pop_back() {
-                        self.history.push(popped);
-                    }
-
-                    Resting(curr)
+            Juggling(when, steps, mut history)
+                if now.duration_since(when) > Duration::from_millis(700) => {
+                    history.append(&mut steps.into_iter().collect());
+                    Resting(history)
                 }
-                else {
-                    Starting
-                }
-            }
-            Reaching(when, mut stack) if now.duration_since(when) > Duration::from_millis(700) => {
-                let curr = stack.pop_back()
-                    .expect("stack must always have at least one member");
-                
-                while let Some(popped) = stack.pop_back() {
-                    self.history.push(popped);
-                }
-                
-                Resting(curr)
-            }
             s => s
         }
     }
-
-    // so, on a hop, we cycle through our group
-    // on a dredge the hop group is extended (the stack is added to)
-    // initially the hop group is two
-    // but through dredge we can go further back
-    //
 
     fn handle(&mut self, state: State, cmd: Cmd<S>, now: &Instant) -> State {
         match (state, cmd) {
@@ -105,89 +79,61 @@ impl<S: Talk> Server<S> {
             }
 
             (Starting, Stepped(step)) => {
-                Resting(step)
+                Resting(vec!(step))
             }
-            (Resting(prev), Stepped(step)) => {
-                self.history.push(prev);
-                Resting(step)
+            (Resting(mut history), Stepped(step)) => {
+                history.push(step);
+                Resting(history)
             }
-            (Juggling(_, mut steps), Stepped(step)) => {
-                while let Some(popped) = steps.pop_back() {
-                    self.history.push(popped);
-                }
-                Resting(step)
+            (Juggling(_, active, mut history), Stepped(step)) => {
+                history.append(&mut active.into_iter().collect());
+                history.push(step);
+                Resting(history)
             }
-            (Reaching(_, mut stack), Stepped(step)) => {
-                while let Some(popped) = stack.pop_back() {
-                    self.history.push(popped);
-                }
-                Resting(step)
-            }
-
 
 
             (s@Starting, Juggle) => {
                 s
             }
-            (Resting(prev), Juggle) => {
-                if let Some(step) = self.history.pop() {
-                    self.goto(&step);
-                    Juggling(*now, VecDeque::from([step,prev]))
+            (Resting(mut history), Juggle) => {
+                if history.len() >= 2 {
+                    let a = history.pop().unwrap();
+                    let b = history.pop().unwrap();
+                    Juggling(*now, VecDeque::from(vec!(a, b)), history)
                 }
-                else { Resting(prev) }
+                else {
+                    Resting(history)
+                }
             }
-            (Juggling(_, mut steps), Juggle) => {
-                if let Some(prev) = steps.pop_front() {
-                    steps.push_back(prev);
+            (Juggling(_, mut active, history), Juggle) => {
+                if let Some(prev) = active.pop_front() {
+                    active.push_back(prev);
                 }
 
-                if let Some(curr) = steps.front() {
+                if let Some(curr) = active.front() {
                     self.goto(&curr);
                 }
                 
-                Juggling(*now, steps)
+                Juggling(*now, active, history)
             }
-            (s@Reaching(_,_), Juggle) => {
-                s
+
+            (_, Clear) => {
+                todo!()
+                // self.history.clear();
             }
-            
 
             (s@Starting, Reach) => {
                 s
             }
             (Resting(prev), Reach) => {
-                if let Some(step) = self.history.pop() {
-                    self.goto(&step);
-                    Reaching(*now, VecDeque::from([step,prev]))
-                }
-                else { Resting(prev) }
+                todo!()
             }
-            (Reaching(_, mut stack), Reach) => {
-                if let Some(step) = self.history.pop() {
-                    self.goto(&step);
-                    stack.push_back(step);
-                    Reaching(*now, stack)
-                }
-                else { Reaching(*now, stack) }
-            }
-            (Juggling(_, mut steps), Reach) => {
-                if let Some(step) = self.history.pop() {
-                    self.goto(&step);
-                    //jumble occurs here I think todo
-                    steps.push_back(step);
-                    Reaching(*now, steps)
-                }
-                else {
-                    Reaching(*now, steps)
-                }
+            (Juggling(_, active, histpry), Reach) => {
+                todo!()
             }
             
             (s, Perch(tag, pr)) => {
                 self.roost.perch(tag, pr);
-                s
-            }
-            (s, Clear) => {
-                self.history.clear();
                 s
             }
         }
@@ -206,8 +152,7 @@ impl std::fmt::Debug for State {
         match self {
             Starting => f.write_str("Starting"),
             Resting(_) => f.write_str("Resting"),
-            Reaching(_,_) => f.write_str("Reaching"),
-            Juggling(_,_) => f.write_str("Juggling"),
+            Juggling(_,_,_) => f.write_str("Juggling"),
         }
     }
 }
@@ -234,14 +179,12 @@ mod tests {
         p.say("stepped a b");
         tt.step();
 
-        assert_eq!(tt.state(), State::Resting(Step::new("moo", "b")));
+        assert_eq!(tt.state(), State::Resting(vec!(Step::new("moo", "b"))));
     }
 
     #[test]
     fn juggle() {
-        let mut tt = TestRunner::new();
-        let mut p1 = tt.peer("p1");
-        let mut p2 = tt.peer("p2");
+        let (mut tt, mut p1, mut p2) = setup2("p1", "p2");
 
         p1.say("hello p1");
         tt.step();
@@ -256,8 +199,8 @@ mod tests {
         p2.say("juggle");
         tt.step();
 
-        assert_matches!(tt.state(), Juggling(_, steps) => {
-            assert_steps_eq(steps, vec!(
+        assert_matches!(tt.state(), Juggling(_, active, history) => {
+            assert_steps_eq(active, vec!(
                 ("p1", "b"),
                 ("p1", "c")
             ));
@@ -266,9 +209,7 @@ mod tests {
 
     #[test]
     fn juggle2() {
-        let mut tt = TestRunner::new();
-        let mut p1 = tt.peer("p1");
-        let mut p2 = tt.peer("p2");
+        let (mut tt, mut p1, mut p2) = setup2("p1", "p2");
 
         p1.say("hello p1");
         tt.step();
@@ -286,8 +227,8 @@ mod tests {
         p2.say("juggle");
         tt.step();
 
-        assert_matches!(tt.state(), Juggling(_, steps) => {
-            assert_steps_eq(steps, vec!(
+        assert_matches!(tt.state(), Juggling(_, active, history) => {
+            assert_steps_eq(active, vec!(
                 ("p1", "c"),
                 ("p1", "d")
             ));
@@ -296,9 +237,7 @@ mod tests {
 
     #[test]
     fn juggle3() {
-        let mut tt = TestRunner::new();
-        let mut p1 = tt.peer("p1");
-        let mut p2 = tt.peer("p2");
+        let (mut tt, mut p1, mut p2) = setup2("p1", "p2");
 
         p1.say("hello p1");
         tt.step();
@@ -316,15 +255,28 @@ mod tests {
         p1.say("stepped b d");
         tt.step();
 
-        assert_matches!(tt.state(), Juggling(_, steps) => {
-            assert_steps_eq(steps, vec!(
+        assert_matches!(tt.state(), Juggling(_, active, history) => {
+            assert_steps_eq(active, vec!(
                 ("p1", "c"),
                 ("p1", "d")
             ));
         });
     }
 
-    pub fn assert_steps_eq<'a, C: IntoIterator<Item=Step>>(steps: C, expected: Vec<(&str,&str)>) -> () {
+    fn setup1(p1_name: &str) -> (TestRunner, TestTalk) {
+        let mut tt = TestRunner::new();
+        let p1 = tt.peer(p1_name);
+        (tt, p1)
+    }
+
+    fn setup2(p1_name: &str, p2_name: &str) -> (TestRunner, TestTalk, TestTalk) {
+        let mut tt = TestRunner::new();
+        let p1 = tt.peer(p1_name);
+        let p2 = tt.peer(p2_name);
+        (tt, p1, p2)
+    }
+
+    fn assert_steps_eq<'a, C: IntoIterator<Item=Step>>(steps: C, expected: Vec<(&str,&str)>) -> () {
         let actual_tups: Vec<(String, String)> = steps.into_iter()
             .map(|s| (s.tag, s.rf))
             .collect();

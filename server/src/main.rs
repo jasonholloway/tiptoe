@@ -1,3 +1,5 @@
+#![feature(assert_matches)]
+
 mod common;
 mod peer;
 mod roost;
