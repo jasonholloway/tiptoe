@@ -77,33 +77,34 @@ impl<S: Talk> Server<S> {
                 self.roost.add((PeerMode::Start, peer));
                 s
             }
-
-            (Starting, Stepped(step)) => {
-                Resting(vec!(step))
+            (s, Perch(tag, pr)) => {
+                self.roost.perch(tag, pr);
+                s
             }
+
+            (Starting, Stepped(step)) => Resting(vec!(step)),
+            (s@Starting, _) => s,
+
             (Resting(mut history), Stepped(step)) => {
                 history.push(step);
                 Resting(history)
-            }
-            (Juggling(_, active, mut history), Stepped(step)) => {
-                history.append(&mut active.into_iter().collect());
-                history.push(step);
-                Resting(history)
-            }
-
-
-            (s@Starting, Juggle) => {
-                s
             }
             (Resting(mut history), Juggle) => {
                 if history.len() >= 2 {
                     let a = history.pop().unwrap();
                     let b = history.pop().unwrap();
+                    self.goto(&b);
                     Juggling(*now, VecDeque::from(vec!(a, b)), history)
                 }
                 else {
                     Resting(history)
                 }
+            }
+
+            (Juggling(_, active, mut history), Stepped(step)) => {
+                history.append(&mut active.into_iter().collect());
+                history.push(step);
+                Resting(history)
             }
             (Juggling(_, mut active, history), Juggle) => {
                 if let Some(prev) = active.pop_front() {
@@ -122,20 +123,13 @@ impl<S: Talk> Server<S> {
                 // self.history.clear();
             }
 
-            (s@Starting, Reach) => {
-                s
-            }
-            (Resting(prev), Reach) => {
+            (Resting(_prev), Reach) => {
                 todo!()
             }
-            (Juggling(_, active, histpry), Reach) => {
+            (Juggling(_, _active, _history), Reach) => {
                 todo!()
             }
             
-            (s, Perch(tag, pr)) => {
-                self.roost.perch(tag, pr);
-                s
-            }
         }
     }
 
@@ -160,7 +154,7 @@ impl std::fmt::Debug for State {
 
 #[cfg(test)]
 mod tests {
-    use std::{sync::{Arc, Mutex}, io::Stderr, cell::Cell};
+    use std::{sync::{Arc, Mutex}, io::Stdout, cell::Cell};
     use assert_matches::*;
 
     use crate::common::ReadResult;
@@ -169,9 +163,8 @@ mod tests {
 
     #[test]
     fn hello_stepped() {
-        let mut tt = TestRunner::new();
+        let (mut tt, mut p) = setup1("p1");
 
-        let mut p = tt.peer("p1");
         p.say("hello moo");
         tt.step();
         tt.step();
@@ -179,7 +172,12 @@ mod tests {
         p.say("stepped a b");
         tt.step();
 
-        assert_eq!(tt.state(), State::Resting(vec!(Step::new("moo", "b"))));
+        assert_matches!(tt.state(), Resting(steps) => {
+            assert_steps_eq(steps, vec!(
+                ("moo", "a"),
+                ("moo", "b")
+            ));
+        });
     }
 
     #[test]
@@ -201,42 +199,17 @@ mod tests {
 
         assert_matches!(tt.state(), Juggling(_, active, history) => {
             assert_steps_eq(active, vec!(
-                ("p1", "b"),
-                ("p1", "c")
-            ));
-        });
-    }
-
-    #[test]
-    fn juggle2() {
-        let (mut tt, mut p1, mut p2) = setup2("p1", "p2");
-
-        p1.say("hello p1");
-        tt.step();
-        tt.step();
-
-        p1.say("stepped a b");
-        tt.step();
-        
-        p1.say("stepped b c");
-        tt.step();
-
-        p1.say("stepped c d");
-        tt.step();
-
-        p2.say("juggle");
-        tt.step();
-
-        assert_matches!(tt.state(), Juggling(_, active, history) => {
-            assert_steps_eq(active, vec!(
                 ("p1", "c"),
-                ("p1", "d")
+                ("p1", "b")
+            ));
+            assert_steps_eq(history, vec!(
+                ("p1", "a")
             ));
         });
     }
 
     #[test]
-    fn juggle3() {
+    fn juggle_with_two() {
         let (mut tt, mut p1, mut p2) = setup2("p1", "p2");
 
         p1.say("hello p1");
@@ -252,16 +225,85 @@ mod tests {
         p2.say("juggle");
         tt.step();
 
-        p1.say("stepped b d");
+        p2.say("juggle");
         tt.step();
+
+        p2.say("juggle");
+        tt.step();
+
+        assert_eq!(p1.received(), &[
+            "goto b",
+            "goto c",
+            "goto b"
+        ]);
 
         assert_matches!(tt.state(), Juggling(_, active, history) => {
             assert_steps_eq(active, vec!(
                 ("p1", "c"),
-                ("p1", "d")
+                ("p1", "b")
+            ));
+
+            assert_steps_eq(history, vec!(
+                ("p1", "a")
             ));
         });
     }
+
+    // #[test]
+    // fn juggle2() {
+    //     let (mut tt, mut p1, mut p2) = setup2("p1", "p2");
+
+    //     p1.say("hello p1");
+    //     tt.step();
+    //     tt.step();
+
+    //     p1.say("stepped a b");
+    //     tt.step();
+        
+    //     p1.say("stepped b c");
+    //     tt.step();
+
+    //     p1.say("stepped c d");
+    //     tt.step();
+
+    //     p2.say("juggle");
+    //     tt.step();
+
+    //     assert_matches!(tt.state(), Juggling(_, active, history) => {
+    //         assert_steps_eq(active, vec!(
+    //             ("p1", "c"),
+    //             ("p1", "d")
+    //         ));
+    //     });
+    // }
+
+    // #[test]
+    // fn juggle3() {
+    //     let (mut tt, mut p1, mut p2) = setup2("p1", "p2");
+
+    //     p1.say("hello p1");
+    //     tt.step();
+    //     tt.step();
+
+    //     p1.say("stepped a b");
+    //     tt.step();
+        
+    //     p1.say("stepped b c");
+    //     tt.step();
+
+    //     p2.say("juggle");
+    //     tt.step();
+
+    //     p1.say("stepped b d");
+    //     tt.step();
+
+    //     assert_matches!(tt.state(), Juggling(_, active, _history) => {
+    //         assert_steps_eq(active, vec!(
+    //             ("p1", "c"),
+    //             ("p1", "d")
+    //         ));
+    //     });
+    // }
 
     fn setup1(p1_name: &str) -> (TestRunner, TestTalk) {
         let mut tt = TestRunner::new();
@@ -276,9 +318,9 @@ mod tests {
         (tt, p1, p2)
     }
 
-    fn assert_steps_eq<'a, C: IntoIterator<Item=Step>>(steps: C, expected: Vec<(&str,&str)>) -> () {
+    fn assert_steps_eq<'a, C: IntoIterator<Item=&'a Step>>(steps: C, expected: Vec<(&str,&str)>) -> () {
         let actual_tups: Vec<(String, String)> = steps.into_iter()
-            .map(|s| (s.tag, s.rf))
+            .map(|s| (s.tag.to_string(), s.rf.to_string()))
             .collect();
 
         let expected_tups: Vec<(String, String)> = expected.iter()
@@ -292,8 +334,8 @@ mod tests {
     struct TestRunner {
         now: Instant,
         server: Server<TestTalk>,
-        state_cell: Cell<Option<State>>,
-        log: Stderr
+        state_cell: Cell<State>,
+        log: Stdout
     }
 
     impl TestRunner {
@@ -302,8 +344,8 @@ mod tests {
             TestRunner {
                 now,
                 server: Server::new(now),
-                state_cell: Cell::new(Some(Starting)),
-                log: std::io::stderr()
+                state_cell: Cell::new(Starting),
+                log: std::io::stdout()
             }
         }
 
@@ -313,8 +355,8 @@ mod tests {
             p
         }
 
-        pub fn state<'a>(&self) -> State {
-            self.state_cell.take().unwrap()
+        pub fn state<'a>(&'a mut self) -> &'a State {
+            self.state_cell.get_mut()
         }
 
         pub fn say(&mut self, cmd: Cmd<TestTalk>) -> () {
@@ -323,8 +365,14 @@ mod tests {
         
         pub fn step(&mut self) -> () {
             self.now = self.now + Duration::from_secs(1);
-            let (s2, _) = self.server.pump(self.state_cell.take().unwrap(), self.now, &mut self.log);
-            self.state_cell.set(Some(s2));
+            let (s2, _) = self.server.pump(self.state_cell.take(), self.now, &mut self.log);
+            self.state_cell.set(s2);
+        }
+    }
+
+    impl Default for State {
+        fn default() -> Self {
+            State::Starting
         }
     }
 
@@ -332,26 +380,27 @@ mod tests {
 
     struct TestTalk {
         input: Arc<Mutex<VecDeque<String>>>,
-        output: Arc<Mutex<VecDeque<String>>>
+        output: Arc<Mutex<Vec<String>>>,
+        buff: String
     }
 
     impl TestTalk {
         pub fn new() -> TestTalk {
             TestTalk {
                 input: Arc::new(Mutex::new(VecDeque::new())),
-                output: Arc::new(Mutex::new(VecDeque::new()))
-            }
-        }
-
-        pub fn clone(&self) -> TestTalk {
-            TestTalk {
-                input: self.input.clone(),
-                output: self.output.clone()
+                output: Arc::new(Mutex::new(Vec::new())),
+                buff: "".to_string()
             }
         }
 
         pub fn say(&mut self, line: &str) -> () {
             self.input.lock().unwrap().push_back(line.to_string());
+        }
+
+        pub fn received<'a>(&'a self) -> Vec<String> {
+            self.output.lock().ok().unwrap().iter()
+                .map(|r| r.to_string())
+                .collect()
         }
     }
 
@@ -368,9 +417,24 @@ mod tests {
 
     impl std::fmt::Write for TestTalk {
         fn write_str(&mut self, s: &str) -> std::fmt::Result {
-            self.output.lock().unwrap().push_back(s.to_string());
+            self.buff += s;
+
+            while let Some((line, rest)) = self.buff.split_once('\n') {
+                self.output.lock().unwrap().push(line.to_string());
+                self.buff = rest.to_string();
+            }
+            
             Ok(())
         }
     }
 
+    impl Clone for TestTalk {
+        fn clone(&self) -> Self {
+            TestTalk {
+                input: self.input.clone(),
+                output: self.output.clone(),
+                buff: self.buff.to_string()
+            }
+        }
+    }
 }

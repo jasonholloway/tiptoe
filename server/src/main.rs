@@ -4,20 +4,25 @@ mod common;
 mod peer;
 mod roost;
 mod server;
-mod lossy_stack;
 
 use common::{Cmd, Talk, ReadResult};
 use peer::Peer;
 use server::{Server, State};
-use std::{net::{TcpListener, TcpStream}, io::{Write, ErrorKind, BufReader, BufRead}, time::{Duration, Instant}, thread::sleep, str::from_utf8};
+use std::{net::{TcpListener, TcpStream}, io::{Write, ErrorKind, BufReader, BufRead, stderr, LineWriter}, time::{Duration, Instant}, thread::sleep, str::from_utf8};
 
 fn main() -> Result<(), std::io::Error> {
-    let delay = Duration::from_millis(50);
-    
     let listener = TcpListener::bind("127.0.0.1:17878")?;
     listener.set_nonblocking(true)?;
 
-    let mut log = TcpStream::connect("127.0.0.1:17879")?;
+    match TcpStream::connect("127.0.0.1:17879") {
+        Ok(stream) => run(listener, stream),
+        Err(_) => run(listener, std::io::stderr())
+    }
+}
+
+fn run<L: Write>(listener: TcpListener, mut log: L) -> Result<(), std::io::Error> {
+    let delay = Duration::from_millis(50);
+
     writeln!(log, "\t\t\tStart")?;
 
     let mut server: Server<TcpTalker> = Server::new(Instant::now());
