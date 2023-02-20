@@ -1,5 +1,0 @@
-  /usr/local/src/tiptoe/server/src:
-  drwxr-xr-x 2 jason jason 4096 Jan 14 13:11 .
-  drwxr-xr-x 4 jason jason 4096 Jan 10 22:42 ..
-  -rw-r--r-- 1 jason jason 7877 Jan 14 13:11 main.rs
-  -rw-r--r-- 1 jason jason  624 Jan 14 13:11 peer.rs

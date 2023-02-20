@@ -4,11 +4,14 @@ mod common;
 mod peer;
 mod roost;
 mod server;
+mod tcp_talker;
 
-use common::{Cmd, Talk, ReadResult};
+use crate::server::Server;
+use common::Cmd;
 use peer::Peer;
-use server::{Server, State};
-use std::{net::{TcpListener, TcpStream}, io::{Write, ErrorKind, BufReader, BufRead, stderr, LineWriter}, time::{Duration, Instant}, thread::sleep, str::from_utf8};
+use server::State;
+use tcp_talker::TcpTalker;
+use std::{net::{TcpListener, TcpStream}, io::{Write, ErrorKind}, time::{Duration, Instant}, thread::sleep};
 
 fn main() -> Result<(), std::io::Error> {
     let listener = TcpListener::bind("127.0.0.1:17878")?;
@@ -52,65 +55,3 @@ fn run<L: Write>(listener: TcpListener, mut log: L) -> Result<(), std::io::Error
         }
     }
 }
-
-
-
-
-struct TcpTalker {
-    input: BufReader<TcpStream>,
-    output: TcpStream,
-    buffer: Vec<u8>,
-    active: bool
-}
-
-impl TcpTalker {
-    pub fn new(stream: TcpStream) -> TcpTalker {
-        TcpTalker {
-            input: BufReader::new(stream.try_clone().unwrap()),
-            output: stream,
-            buffer: Vec::new(),
-            active: true
-        }
-    }
-}
-
-impl Talk for TcpTalker {
-    fn read(&mut self) -> common::ReadResult<String> {
-        if !self.active {
-            ReadResult::Stop
-        }
-        else {
-            match self.input.read_until(b'\n', &mut self.buffer) {
-                Ok(0) => {
-                    self.active = false;
-                    ReadResult::Stop
-                }
-                Ok(_) => {
-                    let result = self.buffer
-                        .split_last()
-                        .and_then(|(_,l)| from_utf8(l).ok())
-                        .map(|s| ReadResult::Yield(s.trim().to_string()))
-                        .unwrap_or(ReadResult::Continue);
-
-                    self.buffer.clear();
-
-                    result
-                }, 
-                Err(e) if e.kind() == ErrorKind::WouldBlock => ReadResult::Continue,
-                Err(e) => {
-                    println!("Unexpected read error {e:?}");
-                    self.active = false;
-                    ReadResult::Stop
-                }
-            }
-        }
-    }
-}
-
-impl std::fmt::Write for TcpTalker {
-    fn write_str(&mut self, s: &str) -> std::fmt::Result {
-        writeln!(self.output, "{}", s).expect("Failed to write to tcp");
-        Ok(())
-    }
-}
-
