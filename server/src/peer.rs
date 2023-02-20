@@ -54,7 +54,8 @@ impl<S: Talk> Peer<S> {
         }
     }
 
-    pub fn goto(&mut self, rf: &str) -> () {
+    pub fn goto<W: std::io::Write>(&mut self, rf: &str, log: &mut W) -> () {
+        writeln!(log, "goto {}", rf).unwrap();
         writeln!(self.talk, "goto {}", rf).unwrap();
     }
 }

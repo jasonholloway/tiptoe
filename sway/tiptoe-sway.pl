@@ -10,7 +10,7 @@ my $swaySock=$ENV{'SWAYSOCK'};
 socket(SWAY, PF_UNIX, Socket::SOCK_STREAM | Socket::SOCK_CLOEXEC, 0)
     or die "Can't create socket";
 connect(SWAY, sockaddr_un($swaySock))
-    or die "can't connect to server!";
+    or die "can't connect to sway sock!";
 fcntl(SWAY, F_SETFL, fcntl(SWAY, F_GETFL, 0) | O_NONBLOCK)
     or die "fcntl problem";
 SWAY->autoflush(1);
@@ -19,7 +19,7 @@ SWAY->autoflush(1);
 socket(TIPTOE, PF_INET, Socket::SOCK_STREAM | Socket::SOCK_CLOEXEC, getprotobyname('tcp'))
     or die "Can't create socket";
 connect(TIPTOE, sockaddr_in(17878, inet_aton("127.0.0.1")))
-    or die "can't connect to server!";
+    or die "can't connect to tiptoe server at 127.0.0.1:17878!";
 fcntl(TIPTOE, F_SETFL, fcntl(TIPTOE, F_GETFL, 0) | O_NONBLOCK)
     or die "fcntl problem";
 TIPTOE->autoflush(1);

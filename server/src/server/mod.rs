@@ -4,8 +4,6 @@ use crate::{roost::Roost, peer::{Peer, PeerMode}, common::{Step, Cmd, Talk}};
 
 #[cfg(test)]
 mod test;
-
-#[cfg(test)]
 mod test_talker;
 
 use State::*;
@@ -54,7 +52,7 @@ impl<S: Talk> Server<S> {
 
         while let Some(cmd) = self.cmds.pop_front() {
             writeln!(log, "\t\t\t{:?} {:?}", state, cmd).unwrap();
-            state = self.handle(state, cmd, &now);
+            state = self.handle(state, cmd, &now, log);
             work_done = true;
         }
 
@@ -77,7 +75,7 @@ impl<S: Talk> Server<S> {
         }
     }
 
-    fn handle(&mut self, state: State, cmd: Cmd<S>, now: &Instant) -> State {
+    fn handle<W: std::io::Write>(&mut self, state: State, cmd: Cmd<S>, now: &Instant, log: &mut W) -> State {
         match (state, cmd) {
             (s, Connect(peer)) => {
                 self.roost.add((PeerMode::Start, peer));
@@ -99,7 +97,7 @@ impl<S: Talk> Server<S> {
                 if history.len() >= 2 {
                     let a = history.pop().unwrap();
                     let b = history.pop().unwrap();
-                    self.goto(&b);
+                    self.goto(&b, log);
                     Juggling(*now, VecDeque::from(vec!(a, b)), history)
                 }
                 else {
@@ -118,7 +116,7 @@ impl<S: Talk> Server<S> {
                 }
 
                 if let Some(curr) = active.front() {
-                    self.goto(&curr);
+                    self.goto(&curr, log);
                 }
                 
                 Juggling(*now, active, history)
@@ -139,10 +137,10 @@ impl<S: Talk> Server<S> {
         }
     }
 
-    fn goto(&mut self, step: &Step) {
+    fn goto<W: std::io::Write>(&mut self, step: &Step, log: &mut W) {
         if let Some(rc) = self.roost.find_perch(&step.tag) {
             let mut p = rc.borrow_mut();
-            p.goto(&step.rf);
+            p.goto(&step.rf, log);
         }
     }
 }
